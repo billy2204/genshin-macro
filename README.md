@@ -19,6 +19,18 @@ Không ghi di chuyển chuột, chỉ ghi click trái/phải.
 
 Nếu bạn Alt+Tab ra khỏi game trong lúc ghi, mọi thao tác từ lúc đó bị bỏ qua (Alt+Tab không bị ghi).
 
+### Phím bỏ qua
+
+Mỗi macro Ghi có danh sách **Phím bỏ qua**: những phím này không bao giờ bị ghi (mặc định W A S D để di chuyển không lọt vào combo). Bấm **+ Thêm phím** rồi nhấn phím muốn bỏ qua, hoặc chọn một phím trong danh sách và bấm **− Bỏ phím đã chọn**.
+
+### Sửa từng thao tác
+
+Chọn một dòng trong bảng **Thao tác đã ghi**, sửa **Thời gian** (ms), **Nhấn/Nhả**, loại (Phím / Chuột trái / Chuột phải, với Phím thì bấm nút phím rồi nhấn phím mới) và bấm **Áp dụng**. Danh sách tự sắp xếp lại theo thời gian. **Xóa event** bỏ dòng đang chọn. Lưu ý nếu xóa một lần Nhấn mà giữ lại Nhả thì phím đó coi như không được bấm; macro vẫn nhả mọi phím đang giữ khi dừng.
+
+## File macro
+
+Thanh trên cùng có **Mở file…** và **Lưu thành…** để chọn đường dẫn file macro (.json). App nhớ file đang dùng trong `settings.json` cạnh exe, lần sau mở lại đúng file đó. Muốn chia sẻ macro sang máy khác chỉ cần copy file .json rồi Mở file… trên máy kia.
+
 ## Overlay
 
 Một khung nhỏ luôn nổi trên cùng, góc trên trái màn hình, hiện **Sẵn sàng** / **● GHI: tên** / **▶ tên**. Kéo thả để di chuyển. Click vào overlay không làm game mất focus. Bật tắt bằng ô **Overlay** ở thanh dưới. Lưu ý: nếu game chạy chế độ Fullscreen độc quyền thì overlay có thể bị che, hãy dùng Borderless/Windowed.
@@ -36,7 +48,7 @@ Một khung nhỏ luôn nổi trên cùng, góc trên trái màn hình, hiện *
 Lưu ý:
 - Phím tắt không hoạt động khi cửa sổ app (hoặc hộp thoại của app) đang được focus.
 - Macro tự dừng ngay nếu bạn chuyển sang cửa sổ khác (Alt+Tab), và nhả hết phím đang giữ.
-- Macro được lưu trong `macros.json` cạnh file exe. Nếu file hỏng, app đổi tên nó thành `macros.json.bak` và bắt đầu lại từ trống.
+- Mặc định macro lưu trong `macros.json` cạnh file exe (đổi được bằng Lưu thành…). Nếu file hỏng, app sao nó thành `.bak` và bắt đầu lại từ trống.
 
 ## Build
 

@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import queue
 import tkinter as tk
-from tkinter import messagebox, ttk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Optional
 
-from .controller import Controller
+from .controller import MOUSE_LABELS, Controller
 from .model import KeyRef, RecordedMacro, SpamMacro
 
 POLL_MS = 50
 COLOR_IDLE, COLOR_REC, COLOR_RUN = "#2a7", "#c33", "#27c"
+KIND_KEY = "Phím"
+ACTION_DOWN, ACTION_UP = "Nhấn", "Nhả"
+FILETYPES = [("Macro JSON", "*.json"), ("Tất cả", "*.*")]
 
 
 class Overlay(tk.Toplevel):
@@ -62,10 +66,11 @@ class App(tk.Tk):
         self.events = events
         self._on_overlay_created = on_overlay_created
         self.title("Genshin Macro")
-        self.minsize(720, 460)
+        self.minsize(860, 600)
         self._selected: Optional[str] = None
         self._capturing: Optional[ttk.Button] = None
         self._ids: list[str] = []
+        self._ev_key: Optional[KeyRef] = None  # key chosen in the event editor
         self.overlay: Optional[Overlay] = None
         self._build()
         self._refresh_list()
@@ -84,6 +89,12 @@ class App(tk.Tk):
         ttk.Button(bar, text="Thêm Spam", command=self._add_spam).pack(side="left")
         ttk.Button(bar, text="Thêm Ghi", command=self._add_recorded).pack(side="left", padx=(6, 0))
         ttk.Button(bar, text="Xóa", command=self._delete).pack(side="left", padx=(6, 0))
+        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=10)
+        ttk.Button(bar, text="Mở file…", command=self._open_dialog).pack(side="left")
+        ttk.Button(bar, text="Lưu thành…", command=self._save_as_dialog).pack(side="left", padx=(6, 0))
+        self.path_lbl = ttk.Label(bar, text="", foreground="#666")
+        self.path_lbl.pack(side="left", padx=(10, 0))
+        self._refresh_path_label()
 
         left = ttk.Frame(self, padding=8)
         left.grid(row=1, column=0, sticky="nsw")
@@ -139,7 +150,7 @@ class App(tk.Tk):
         ttk.Separator(e).grid(row=r, column=0, columnspan=2, sticky="ew", pady=8)
         r += 1
 
-        # spam section
+        # ---- spam section ----
         self.spam_frame = ttk.Frame(e)
         self.spam_frame.grid(row=r, column=0, columnspan=2, sticky="ew")
         self.spam_frame.columnconfigure(1, weight=1)
@@ -153,13 +164,15 @@ class App(tk.Tk):
         iv.bind("<FocusOut>", lambda ev: self._commit_interval())
         iv.bind("<Return>", lambda ev: self._commit_interval())
 
-        # recorded section
+        # ---- recorded section ----
         self.rec_frame = ttk.Frame(e)
         self.rec_frame.grid(row=r, column=0, columnspan=2, sticky="nsew")
         e.rowconfigure(r, weight=1)
-        self.rec_frame.columnconfigure(0, weight=1)
-        self.rec_frame.rowconfigure(2, weight=1)
-        top = ttk.Frame(self.rec_frame)
+        rf = self.rec_frame
+        rf.columnconfigure(0, weight=1)
+        rf.rowconfigure(3, weight=1)
+
+        top = ttk.Frame(rf)
         top.grid(row=0, column=0, sticky="ew")
         self.rec_btn = ttk.Button(top, text="● Ghi", command=self._toggle_record)
         self.rec_btn.pack(side="left")
@@ -167,12 +180,24 @@ class App(tk.Tk):
         self.rec_info.pack(side="left", padx=8)
         self.loop_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text="Lặp lại đến khi dừng", variable=self.loop_var, command=self._commit_loop).pack(side="left", padx=8)
-        ttk.Label(self.rec_frame, text="Thao tác đã ghi:").grid(row=1, column=0, sticky="w", pady=(8, 2))
-        tree_box = ttk.Frame(self.rec_frame)
-        tree_box.grid(row=2, column=0, sticky="nsew")
+
+        ign = ttk.LabelFrame(rf, text="Phím bỏ qua (không ghi)", padding=4)
+        ign.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        self.ignore_list = tk.Listbox(ign, height=3, width=22, exportselection=False, activestyle="none")
+        self.ignore_list.pack(side="left")
+        ign_btns = ttk.Frame(ign)
+        ign_btns.pack(side="left", padx=8, anchor="n")
+        self.ignore_add_btn = ttk.Button(ign_btns, text="+ Thêm phím", command=lambda: self._capture("ignore"))
+        self.ignore_add_btn.pack(fill="x")
+        ttk.Button(ign_btns, text="− Bỏ phím đã chọn", command=self._remove_ignore).pack(fill="x", pady=(4, 0))
+        ttk.Label(ign, text="Mặc định W A S D.\nPhím trong danh sách này\nkhông bao giờ bị ghi.", foreground="#666", justify="left").pack(side="left", padx=8)
+
+        ttk.Label(rf, text="Thao tác đã ghi (chọn một dòng để sửa):").grid(row=2, column=0, sticky="w", pady=(8, 2))
+        tree_box = ttk.Frame(rf)
+        tree_box.grid(row=3, column=0, sticky="nsew")
         tree_box.columnconfigure(0, weight=1)
         tree_box.rowconfigure(0, weight=1)
-        self.event_tree = ttk.Treeview(tree_box, columns=("t", "action", "key"), show="headings", height=10)
+        self.event_tree = ttk.Treeview(tree_box, columns=("t", "action", "key"), show="headings", height=8, selectmode="browse")
         self.event_tree.heading("t", text="Thời gian (ms)")
         self.event_tree.heading("action", text="Hành động")
         self.event_tree.heading("key", text="Phím / Chuột")
@@ -183,16 +208,33 @@ class App(tk.Tk):
         sb = ttk.Scrollbar(tree_box, orient="vertical", command=self.event_tree.yview)
         sb.grid(row=0, column=1, sticky="ns")
         self.event_tree.configure(yscrollcommand=sb.set)
+        self.event_tree.bind("<<TreeviewSelect>>", self._on_event_select)
+
+        edit = ttk.Frame(rf)
+        edit.grid(row=4, column=0, sticky="ew", pady=(6, 0))
+        ttk.Label(edit, text="Thời gian:").pack(side="left")
+        self.ev_t_var = tk.IntVar(value=0)
+        ttk.Spinbox(edit, from_=0, to=3_600_000, width=8, textvariable=self.ev_t_var).pack(side="left", padx=(2, 8))
+        self.ev_action_var = tk.StringVar(value=ACTION_DOWN)
+        ttk.Combobox(edit, textvariable=self.ev_action_var, values=[ACTION_DOWN, ACTION_UP], width=6, state="readonly").pack(side="left", padx=(0, 8))
+        self.ev_kind_var = tk.StringVar(value=KIND_KEY)
+        kind_cb = ttk.Combobox(edit, textvariable=self.ev_kind_var, values=[KIND_KEY, MOUSE_LABELS["left"], MOUSE_LABELS["right"]], width=10, state="readonly")
+        kind_cb.pack(side="left", padx=(0, 4))
+        kind_cb.bind("<<ComboboxSelected>>", lambda ev: self._sync_ev_key_btn())
+        self.ev_key_btn = ttk.Button(edit, text="(phím)", command=lambda: self._capture("evkey"))
+        self.ev_key_btn.pack(side="left", padx=(0, 8))
+        ttk.Button(edit, text="Áp dụng", command=self._apply_event).pack(side="left")
+        ttk.Button(edit, text="Xóa event", command=self._delete_event).pack(side="left", padx=(6, 0))
         r += 1
         ttk.Label(
             e,
             text=(
-                "Bấm phím tắt khi đang trong game để chạy / dừng macro.\n"
-                "Ghi: chọn macro kiểu Ghi, bấm phím Ghi (hoặc nút ● Ghi) để bắt đầu, bấm lại để dừng.\n"
-                "Phím tắt của chính macro đó cũng dừng ghi."
+                "Bấm phím tắt khi đang trong game để chạy / dừng macro. "
+                "Ghi: chọn macro kiểu Ghi, bấm phím Ghi để bắt đầu, bấm lại để dừng."
             ),
             foreground="#666",
             justify="left",
+            wraplength=560,
         ).grid(row=r, column=0, columnspan=2, sticky="w", pady=(10, 0))
         self._show_kind(None)
 
@@ -246,14 +288,23 @@ class App(tk.Tk):
             self.loop_var.set(m.loop)
             self.rec_info.config(text=f"{len(m.events)} sự kiện, {m.duration_ms} ms")
             self.rec_btn.config(text="■ Dừng ghi" if self.ctl.recording_id == m.id else "● Ghi")
+            self._fill_ignore(m)
             self._fill_events(m)
             self._show_kind("recorded")
 
-    def _fill_events(self, m: RecordedMacro) -> None:
+    def _fill_ignore(self, m: RecordedMacro) -> None:
+        self.ignore_list.delete(0, "end")
+        for k in m.ignore_keys:
+            self.ignore_list.insert("end", k.label)
+
+    def _fill_events(self, m: RecordedMacro, keep_index: Optional[int] = None) -> None:
         self.event_tree.delete(*self.event_tree.get_children())
-        for ev in m.events:
+        for i, ev in enumerate(m.events):
             t, action, label = self.ctl.describe_event(ev)
-            self.event_tree.insert("", "end", values=(str(t), action, label))
+            self.event_tree.insert("", "end", iid=str(i), values=(str(t), action, label))
+        if keep_index is not None and 0 <= keep_index < len(m.events):
+            self.event_tree.selection_set(str(keep_index))
+            self.event_tree.see(str(keep_index))
 
     def _show_kind(self, kind: Optional[str]) -> None:
         self.spam_frame.grid_remove()
@@ -264,7 +315,7 @@ class App(tk.Tk):
             self.rec_frame.grid()
         self.hotkey_btn.config(state="normal" if kind else "disabled")
 
-    # ---- actions -------------------------------------------------------------
+    # ---- macro actions -------------------------------------------------------
     def _add_spam(self) -> None:
         self._selected = self.ctl.add_spam().id
         self._refresh_list()
@@ -325,6 +376,133 @@ class App(tk.Tk):
         if v != self.ctl.random_ms:
             self.ctl.set_random_ms(v)
 
+    # ---- ignore keys -----------------------------------------------------------
+    def _remove_ignore(self) -> None:
+        m = self._current()
+        sel = self.ignore_list.curselection()
+        if isinstance(m, RecordedMacro) and sel:
+            self.ctl.remove_ignore_key(m.id, sel[0])
+            self._fill_ignore(self.ctl.get(m.id))
+
+    # ---- event editing ---------------------------------------------------------
+    def _selected_event_index(self) -> Optional[int]:
+        sel = self.event_tree.selection()
+        return int(sel[0]) if sel else None
+
+    def _on_event_select(self, _ev=None) -> None:
+        m = self._current()
+        i = self._selected_event_index()
+        if not isinstance(m, RecordedMacro) or i is None or i >= len(m.events):
+            return
+        ev = m.events[i]
+        self.ev_t_var.set(ev.t)
+        self.ev_action_var.set(ACTION_DOWN if ev.type.endswith("_down") else ACTION_UP)
+        if ev.type.startswith("mouse"):
+            self.ev_kind_var.set(MOUSE_LABELS.get(str(ev.code), MOUSE_LABELS["left"]))
+            self._ev_key = None
+        else:
+            self.ev_kind_var.set(KIND_KEY)
+            self._ev_key = KeyRef(int(ev.code), bool(ev.ext), self.ctl.describe_event(ev)[2])
+        self._sync_ev_key_btn()
+
+    def _sync_ev_key_btn(self) -> None:
+        if self.ev_kind_var.get() == KIND_KEY:
+            self.ev_key_btn.config(state="normal", text=self._ev_key.label if self._ev_key else "(phím)")
+        else:
+            self.ev_key_btn.config(state="disabled", text="—")
+
+    def _apply_event(self) -> None:
+        m = self._current()
+        i = self._selected_event_index()
+        if not isinstance(m, RecordedMacro) or i is None:
+            return
+        try:
+            t = int(self.ev_t_var.get())
+        except (tk.TclError, ValueError):
+            messagebox.showerror("Lỗi", "Thời gian phải là số ms")
+            return
+        down = self.ev_action_var.get() == ACTION_DOWN
+        kind = self.ev_kind_var.get()
+        try:
+            if kind == KIND_KEY:
+                if self._ev_key is None:
+                    messagebox.showerror("Lỗi", "Chưa chọn phím")
+                    return
+                self.ctl.update_event(m.id, i, t=t, type="key_down" if down else "key_up", code=self._ev_key.scan, ext=self._ev_key.ext)
+            else:
+                button = "left" if kind == MOUSE_LABELS["left"] else "right"
+                self.ctl.update_event(m.id, i, t=t, type="mouse_down" if down else "mouse_up", code=button)
+        except (ValueError, IndexError) as ex:
+            messagebox.showerror("Lỗi", str(ex))
+            return
+        m = self.ctl.get(m.id)
+        # follow the edited event to its new (sorted) position
+        new_index = next((j for j, e in enumerate(m.events) if e.t == t and (e.type.endswith("_down") == down)), i)
+        self.rec_info.config(text=f"{len(m.events)} sự kiện, {m.duration_ms} ms")
+        self._fill_events(m, keep_index=new_index)
+
+    def _delete_event(self) -> None:
+        m = self._current()
+        i = self._selected_event_index()
+        if not isinstance(m, RecordedMacro) or i is None:
+            return
+        self.ctl.delete_event(m.id, i)
+        m = self.ctl.get(m.id)
+        self.rec_info.config(text=f"{len(m.events)} sự kiện, {m.duration_ms} ms")
+        self._fill_events(m, keep_index=min(i, len(m.events) - 1))
+
+    # ---- file path ---------------------------------------------------------------
+    def _refresh_path_label(self) -> None:
+        self.path_lbl.config(text=f"File: {self.ctl.path}" if self.ctl.path else "")
+
+    def _save_as_dialog(self) -> None:
+        initial = self.ctl.path
+        p = filedialog.asksaveasfilename(
+            title="Lưu file macro",
+            defaultextension=".json",
+            filetypes=FILETYPES,
+            initialdir=str(initial.parent) if initial else None,
+            initialfile=initial.name if initial else "macros.json",
+        )
+        if p:
+            self._save_as_path(Path(p))
+
+    def _save_as_path(self, path: Path) -> None:
+        try:
+            self.ctl.save_as(path)
+        except OSError as ex:
+            messagebox.showerror("Lỗi", f"Không lưu được: {ex}")
+        self._refresh_path_label()
+
+    def _open_dialog(self) -> None:
+        initial = self.ctl.path
+        p = filedialog.askopenfilename(
+            title="Mở file macro",
+            filetypes=FILETYPES,
+            initialdir=str(initial.parent) if initial else None,
+        )
+        if p:
+            self._open_path(Path(p))
+
+    def _open_path(self, path: Path) -> None:
+        try:
+            self.ctl.load_from(path)
+        except ValueError as ex:
+            messagebox.showerror("Lỗi", str(ex))
+            return
+        self._reload_all()
+
+    def _reload_all(self) -> None:
+        self._selected = None
+        self.random_var.set(self.ctl.random_ms)
+        rh = self.ctl.record_hotkey
+        self.record_btn.config(text=rh.label if rh else "(chưa có)")
+        self.overlay_var.set(self.ctl.overlay)
+        self._refresh_path_label()
+        self._refresh_list()
+        self._update_status()
+
+    # ---- overlay -------------------------------------------------------------------
     def _overlay_changed(self) -> None:
         on = bool(self.overlay_var.get())
         self.ctl.set_overlay(on)
@@ -343,20 +521,35 @@ class App(tk.Tk):
             self.overlay.destroy()
             self.overlay = None
 
+    # ---- key capture -----------------------------------------------------------------
+    def _capture_button(self, field: str) -> ttk.Button:
+        return {
+            "hotkey": self.hotkey_btn,
+            "key": self.key_btn,
+            "record": self.record_btn,
+            "ignore": self.ignore_add_btn,
+            "evkey": self.ev_key_btn,
+        }[field]
+
     def _capture(self, field: str) -> None:
-        btn = {"hotkey": self.hotkey_btn, "key": self.key_btn, "record": self.record_btn}[field]
+        btn = self._capture_button(field)
         if field != "record" and not self._selected:
             return
         if self._capturing is not None:
             self.ctl.cancel_capture()
             self._capturing = None
-            self._load_editor()
-            rh = self.ctl.record_hotkey
-            self.record_btn.config(text=rh.label if rh else "(chưa có)")
+            self._restore_capture_buttons()
             return
         self._capturing = btn
         btn.config(text="Nhấn phím…")
         self.ctl.begin_capture(lambda ref: self.events.put(("captured", field, ref)))
+
+    def _restore_capture_buttons(self) -> None:
+        self._load_editor()
+        rh = self.ctl.record_hotkey
+        self.record_btn.config(text=rh.label if rh else "(chưa có)")
+        self.ignore_add_btn.config(text="+ Thêm phím")
+        self._sync_ev_key_btn()
 
     def _toggle_record(self) -> None:
         m = self._current()
@@ -385,8 +578,20 @@ class App(tk.Tk):
             self._capturing = None
             if field == "record":
                 self._set_record_hotkey(ref)
+            elif field == "ignore":
+                m = self._current()
+                if isinstance(m, RecordedMacro):
+                    self.ctl.add_ignore_key(m.id, ref)
+                    self._fill_ignore(self.ctl.get(m.id))
+                self.ignore_add_btn.config(text="+ Thêm phím")
+            elif field == "evkey":
+                self._ev_key = ref
+                self.ev_kind_var.set(KIND_KEY)
+                self._sync_ev_key_btn()
             else:
                 self._set_field(field, ref)
+        elif kind == "reload":
+            self._reload_all()
         elif kind in ("state", "recording"):
             self._update_status()
             self._load_editor()

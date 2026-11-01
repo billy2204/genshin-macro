@@ -88,6 +88,7 @@ class RecordedMacro:
     hotkey: Optional[KeyRef] = None
     loop: bool = False
     events: list[InputEvent] = field(default_factory=list)
+    ignore_keys: list[KeyRef] = field(default_factory=list)  # never recorded (e.g. WASD)
     kind = "recorded"
 
     def to_dict(self) -> dict:
@@ -98,6 +99,7 @@ class RecordedMacro:
             "hotkey": self.hotkey.to_dict() if self.hotkey else None,
             "loop": self.loop,
             "events": [e.to_dict() for e in self.events],
+            "ignore_keys": [k.to_dict() for k in self.ignore_keys],
         }
 
     @classmethod
@@ -108,6 +110,7 @@ class RecordedMacro:
             hotkey=KeyRef.from_dict(d.get("hotkey")),
             loop=bool(d.get("loop", False)),
             events=[InputEvent.from_dict(e) for e in d.get("events", [])],
+            ignore_keys=[k for k in (KeyRef.from_dict(x) for x in d.get("ignore_keys", [])) if k is not None],
         )
 
     @property

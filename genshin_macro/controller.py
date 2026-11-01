@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import queue
 import threading
+from pathlib import Path
 from typing import Callable, Optional
 
 from .hotkeys import HotkeyManager
-from .model import Config, InputEvent, KeyRef, Macro, RecordedMacro, SpamMacro, new_id
+from .model import EVENT_TYPES, Config, InputEvent, KeyRef, Macro, RecordedMacro, SpamMacro, new_id
 
 MOUSE_LABELS = {"left": "Chuột trái", "right": "Chuột phải"}
+DEFAULT_IGNORE_SCANS = (17, 30, 31, 32)  # W A S D
 from .recorder import Recorder
 
 
@@ -22,9 +24,13 @@ class Controller:
         player,
         events: queue.Queue,
         label_for: Callable[[int, bool], str] = lambda s, e: f"SC{s}",
+        path: Optional[Path] = None,
+        on_path_change: Callable[[Path], None] = lambda p: None,
     ):
         self._config = config
         self._save = save
+        self.path: Optional[Path] = Path(path) if path else None
+        self._on_path_change = on_path_change
         self._recorder = recorder
         self._hotkeys = hotkeys
         self._player = player
@@ -80,7 +86,11 @@ class Controller:
 
     def add_recorded(self) -> RecordedMacro:
         with self._lock:
-            m = RecordedMacro(id=new_id(), name=self._next_name())
+            m = RecordedMacro(
+                id=new_id(),
+                name=self._next_name(),
+                ignore_keys=[KeyRef(s, False, self._label_for(s, False)) for s in DEFAULT_IGNORE_SCANS],
+            )
             self._config.macros.append(m)
             self._changed()
             return m
@@ -134,6 +144,82 @@ class Controller:
         else:
             label = self._label_for(int(ev.code), bool(ev.ext))
         return (ev.t, action, label)
+
+    # ---- ignore keys / event editing ----------------------------------------
+    def _recorded(self, macro_id: str) -> RecordedMacro:
+        m = self.get(macro_id)
+        if not isinstance(m, RecordedMacro):
+            raise ValueError("Chỉ macro kiểu Ghi mới có mục này")
+        return m
+
+    def add_ignore_key(self, macro_id: str, key: KeyRef) -> None:
+        with self._lock:
+            m = self._recorded(macro_id)
+            if any(k.key() == key.key() for k in m.ignore_keys):
+                return
+            m.ignore_keys.append(key)
+            self._save(self._config)
+
+    def remove_ignore_key(self, macro_id: str, index: int) -> None:
+        with self._lock:
+            m = self._recorded(macro_id)
+            del m.ignore_keys[index]
+            self._save(self._config)
+
+    def update_event(self, macro_id: str, index: int, *, t=None, type=None, code=None, ext=None) -> None:
+        with self._lock:
+            m = self._recorded(macro_id)
+            ev = m.events[index]  # IndexError if out of range
+            new_t = ev.t if t is None else int(t)
+            new_type = ev.type if type is None else str(type)
+            new_code = ev.code if code is None else code
+            new_ext = ev.ext if ext is None else bool(ext)
+            if new_t < 0:
+                raise ValueError("Thời gian phải >= 0")
+            if new_type not in EVENT_TYPES:
+                raise ValueError(f"Loại sự kiện không hợp lệ: {new_type}")
+            if new_type.startswith("mouse"):
+                if new_code not in MOUSE_LABELS:
+                    raise ValueError("Chuột chỉ có 'left' hoặc 'right'")
+                new_ext = False
+            else:
+                new_code = int(new_code)
+            m.events[index] = InputEvent(t=new_t, type=new_type, code=new_code, ext=new_ext)
+            m.events.sort(key=lambda e: e.t)  # stable: keeps order of equal times
+            self._save(self._config)
+
+    def delete_event(self, macro_id: str, index: int) -> None:
+        with self._lock:
+            m = self._recorded(macro_id)
+            del m.events[index]
+            self._save(self._config)
+
+    # ---- file path ------------------------------------------------------------
+    def save_as(self, path: Path) -> None:
+        with self._lock:
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self.path = path
+            self._config.save(path)
+            self._on_path_change(path)
+
+    def load_from(self, path: Path) -> None:
+        path = Path(path)
+        if not path.is_file():
+            raise ValueError(f"Không tìm thấy file: {path}")
+        with self._lock:
+            self._player.stop()
+            self.stop_recording()
+            cfg = Config.load(path)
+            self._config.random_ms = cfg.random_ms
+            self._config.macros = cfg.macros
+            self._config.record_hotkey = cfg.record_hotkey
+            self._config.overlay = cfg.overlay
+            self.path = path
+            self.selected_id = None
+            self.rebind_all()
+            self._on_path_change(path)
+            self._events.put(("reload", None))
 
     def set_random_ms(self, value: int) -> None:
         with self._lock:
@@ -228,9 +314,16 @@ class Controller:
                 self._capture_cb = None
                 cb(KeyRef(scan=scan, ext=bool(ext), label=self._label_for(scan, bool(ext))))
             return
-        if self._recording_id is not None:
+        if self._recording_id is not None and not self._is_ignored(scan, ext):
             self._recorder.feed("key_down" if down else "key_up", scan, ext)
         self._hotkeys.on_key(scan, ext, down)
+
+    def _is_ignored(self, scan: int, ext: bool) -> bool:
+        try:
+            m = self.get(self._recording_id)
+        except KeyError:
+            return False
+        return isinstance(m, RecordedMacro) and any(k.key() == (scan, bool(ext)) for k in m.ignore_keys)
 
     def on_mouse(self, button: str, down: bool) -> None:
         if self._capture_cb is not None:

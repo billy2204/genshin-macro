@@ -117,3 +117,10 @@ def test_corrupt_file_is_backed_up_before_defaults(tmp_path):
     Config.load(path)
     bak = tmp_path / "macros.json.bak"
     assert bak.exists() and bak.read_text(encoding="utf-8") == "{not json"
+
+
+def test_ignore_keys_roundtrip_and_default():
+    m = RecordedMacro(id="r", name="n", ignore_keys=[KeyRef(17, False, "W")])
+    back = macro_from_dict(m.to_dict())
+    assert back.ignore_keys == [KeyRef(17, False, "W")]
+    assert RecordedMacro.from_dict({"kind": "recorded", "id": "x", "name": "y"}).ignore_keys == []

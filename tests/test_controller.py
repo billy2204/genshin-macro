@@ -100,9 +100,9 @@ def test_hotkey_during_recording_stops_recording_not_player():
     ctl.start_recording(r.id)
     assert ctl.recording_id == r.id
     clock.t = 1.0
-    ctl.on_key(30, False, True)
+    ctl.on_key(18, False, True)
     clock.t = 1.2
-    ctl.on_key(30, False, False)
+    ctl.on_key(18, False, False)
     clock.t = 1.5
     ctl.on_mouse("left", True)
     clock.t = 1.6
@@ -114,8 +114,8 @@ def test_hotkey_during_recording_stops_recording_not_player():
     assert player.toggled == []
     stored = ctl.get(r.id).events
     assert [(e.t, e.type, e.code) for e in stored] == [
-        (0, "key_down", 30),
-        (200, "key_up", 30),
+        (0, "key_down", 18),
+        (200, "key_up", 18),
         (500, "mouse_down", "left"),
         (600, "mouse_up", "left"),
     ]
@@ -182,14 +182,14 @@ def test_record_hotkey_toggles_recording_of_selected_macro():
     ctl.on_key(68, False, False)
     assert ctl.recording_id == r.id
     clock.t = 1.0
-    ctl.on_key(30, False, True)
+    ctl.on_key(18, False, True)
     clock.t = 1.1
-    ctl.on_key(30, False, False)
+    ctl.on_key(18, False, False)
     clock.t = 2.0
     ctl.on_key(68, False, True)
     ctl.on_key(68, False, False)
     assert ctl.recording_id is None
-    assert [(e.type, e.code) for e in ctl.get(r.id).events] == [("key_down", 30), ("key_up", 30)]
+    assert [(e.type, e.code) for e in ctl.get(r.id).events] == [("key_down", 18), ("key_up", 18)]
     assert player.toggled == []
 
 

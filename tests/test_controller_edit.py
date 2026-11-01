@@ -1,0 +1,171 @@
+"""Controller: ignore keys, event editing, save-as / load-from."""
+import queue
+from pathlib import Path
+
+import pytest
+
+from genshin_macro.controller import Controller
+from genshin_macro.hotkeys import HotkeyManager
+from genshin_macro.model import Config, InputEvent, KeyRef, RecordedMacro
+from genshin_macro.recorder import Recorder
+
+
+class FakePlayer:
+    running_id = None
+
+    def toggle(self, macro):
+        pass
+
+    def stop(self):
+        pass
+
+
+class Clock:
+    t = 0.0
+
+    def __call__(self):
+        return self.t
+
+
+def _make(tmp_path=None, config=None):
+    saved = []
+    clock = Clock()
+    paths = []
+    path = (tmp_path / "macros.json") if tmp_path else None
+    ctl = Controller(
+        config or Config(),
+        saved.append,
+        Recorder(clock, lambda: False),
+        HotkeyManager(lambda: False),
+        FakePlayer(),
+        queue.Queue(),
+        label_for=lambda s, e: f"K{s}",
+        path=path,
+        on_path_change=paths.append,
+    )
+    return ctl, saved, clock, paths
+
+
+W, A, S, D = 17, 30, 31, 32
+
+
+def test_new_recorded_macro_ignores_wasd_by_default():
+    ctl, *_ = _make()
+    r = ctl.add_recorded()
+    assert [k.scan for k in r.ignore_keys] == [W, A, S, D]
+    assert r.ignore_keys[0].label == "K17"
+
+
+def test_ignored_keys_are_not_recorded_but_hotkeys_still_work():
+    ctl, saved, clock, _ = _make()
+    r = ctl.add_recorded()
+    ctl.update(r.id, hotkey=KeyRef(67, False, "F9"))
+    ctl.start_recording(r.id)
+    clock.t = 1.0
+    ctl.on_key(W, False, True)
+    clock.t = 1.1
+    ctl.on_key(18, False, True)  # E
+    clock.t = 1.2
+    ctl.on_key(18, False, False)
+    clock.t = 1.3
+    ctl.on_key(W, False, False)
+    clock.t = 2.0
+    ctl.on_key(67, False, True)  # own hotkey stops
+    ctl.on_key(67, False, False)
+    assert [(e.type, e.code) for e in ctl.get(r.id).events] == [("key_down", 18), ("key_up", 18)]
+
+
+def test_add_and_remove_ignore_key():
+    ctl, saved, *_ = _make()
+    r = ctl.add_recorded()
+    n = len(saved)
+    ctl.add_ignore_key(r.id, KeyRef(42, False, "Shift"))
+    ctl.add_ignore_key(r.id, KeyRef(42, False, "Shift"))  # duplicate ignored
+    assert [k.scan for k in ctl.get(r.id).ignore_keys] == [W, A, S, D, 42]
+    ctl.remove_ignore_key(r.id, 0)
+    assert [k.scan for k in ctl.get(r.id).ignore_keys] == [A, S, D, 42]
+    assert len(saved) == n + 2
+
+
+def _with_events(ctl):
+    r = ctl.add_recorded()
+    ctl.update(
+        r.id,
+        events=[
+            InputEvent(0, "key_down", 18),
+            InputEvent(100, "key_up", 18),
+            InputEvent(300, "mouse_down", "left"),
+            InputEvent(350, "mouse_up", "left"),
+        ],
+    )
+    return r
+
+
+def test_update_event_time_resorts():
+    ctl, *_ = _make()
+    r = _with_events(ctl)
+    ctl.update_event(r.id, 1, t=400)  # key_up moved after the mouse events
+    assert [(e.t, e.type) for e in ctl.get(r.id).events] == [
+        (0, "key_down"),
+        (300, "mouse_down"),
+        (350, "mouse_up"),
+        (400, "key_up"),
+    ]
+
+
+def test_update_event_key_and_action():
+    ctl, *_ = _make()
+    r = _with_events(ctl)
+    ctl.update_event(r.id, 2, type="key_down", code=16, ext=False)  # mouse_down -> Q down
+    ev = ctl.get(r.id).events[2]
+    assert (ev.type, ev.code, ev.ext) == ("key_down", 16, False)
+    ctl.update_event(r.id, 3, type="mouse_up", code="right")
+    assert ctl.get(r.id).events[3].code == "right"
+
+
+def test_update_event_rejects_bad_values():
+    ctl, *_ = _make()
+    r = _with_events(ctl)
+    with pytest.raises(ValueError):
+        ctl.update_event(r.id, 0, t=-5)
+    with pytest.raises(ValueError):
+        ctl.update_event(r.id, 0, type="jump")
+    with pytest.raises(IndexError):
+        ctl.update_event(r.id, 9, t=1)
+
+
+def test_delete_event():
+    ctl, saved, *_ = _make()
+    r = _with_events(ctl)
+    ctl.delete_event(r.id, 0)
+    assert [e.type for e in ctl.get(r.id).events] == ["key_up", "mouse_down", "mouse_up"]
+
+
+def test_save_as_changes_path_and_writes_file(tmp_path):
+    ctl, saved, _, paths = _make(tmp_path)
+    ctl.add_spam()
+    target = tmp_path / "sub" / "combo.json"
+    ctl.save_as(target)
+    assert ctl.path == target
+    assert target.exists()
+    assert paths == [target]
+    assert Config.load(target).macros[0].name == "Macro 1"
+
+
+def test_load_from_replaces_config_and_rebinds(tmp_path):
+    ctl, saved, _, paths = _make(tmp_path)
+    ctl.add_spam()
+    other = tmp_path / "other.json"
+    Config(random_ms=33, macros=[RecordedMacro(id="z", name="Zed", hotkey=KeyRef(66, False, "F8"))]).save(other)
+    ctl.load_from(other)
+    assert ctl.path == other
+    assert [m.id for m in ctl.macros] == ["z"]
+    assert ctl.random_ms == 33
+    assert ctl._hotkeys.is_bound(66, False)
+    assert paths[-1] == other
+
+
+def test_load_from_missing_file_raises(tmp_path):
+    ctl, *_ = _make(tmp_path)
+    with pytest.raises(ValueError):
+        ctl.load_from(tmp_path / "nope.json")
