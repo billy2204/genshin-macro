@@ -44,3 +44,30 @@ def test_check_for_update_uses_fetcher(monkeypatch):
     assert updater.check_for_update("https://x/manifest.json") == ("9.9.9", "https://x/new.exe")
     monkeypatch.setattr(updater, "_fetch_text", lambda url, timeout=10: json.dumps({"version": APP_VERSION, "url": "https://x/new.exe"}))
     assert updater.check_for_update("https://x/manifest.json") is None
+
+
+def test_clean_env_strips_pyinstaller_vars(monkeypatch):
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", r"C:\x")
+    monkeypatch.setenv("_MEIPASS2", r"C:\y")
+    monkeypatch.setenv("PATH", "keep")
+    env = updater.clean_env()
+    assert not any(k.startswith(("_PYI", "_MEI")) for k in env)
+    assert env["PATH"] == "keep"
+
+
+def test_apply_update_spawns_script_with_clean_env(monkeypatch, tmp_path):
+    spawned = {}
+
+    class FakePopen:
+        def __init__(self, args, **kw):
+            spawned["args"] = args
+            spawned["env"] = kw.get("env")
+
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setattr(updater, "current_exe", lambda: tmp_path / "GenshinMacro.exe")
+    monkeypatch.setattr(updater.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(updater.os, "_exit", lambda code: None)
+    updater.apply_update(tmp_path / "new.exe")
+    assert spawned["env"] is not None and "_PYI_PARENT_PROCESS_LEVEL" not in spawned["env"]
+    assert spawned["args"][0] == "cmd"

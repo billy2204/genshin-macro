@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 DEFAULT_UPDATE_URL = "https://github.com/billy2204/genshin-macro/releases/latest/download/manifest.json"
 
 
@@ -84,6 +84,12 @@ def make_swap_script(pid: int, target: Path, new_exe: Path) -> str:
     ])
 
 
+def clean_env() -> dict:
+    """Environment without PyInstaller's onefile bookkeeping vars. A child started with
+    them inherited fails with "invalid originating onefile parent process"."""
+    return {k: v for k, v in os.environ.items() if not k.startswith(("_PYI", "_MEI"))}
+
+
 def current_exe() -> Optional[Path]:
     return Path(sys.executable).resolve() if getattr(sys, "frozen", False) else None
 
@@ -95,5 +101,10 @@ def apply_update(new_exe: Path) -> None:
         raise RuntimeError("Chỉ cập nhật được khi chạy từ file .exe")
     script = Path(tempfile.gettempdir()) / "genshin_macro_update.bat"
     script.write_text(make_swap_script(os.getpid(), target, Path(new_exe)), encoding="utf-8")
-    subprocess.Popen(["cmd", "/c", str(script)], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), close_fds=True)
+    subprocess.Popen(
+        ["cmd", "/c", str(script)],
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        close_fds=True,
+        env=clean_env(),
+    )
     os._exit(0)
