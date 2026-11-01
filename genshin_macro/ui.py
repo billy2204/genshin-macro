@@ -8,6 +8,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Optional
 
+from . import updater
 from .controller import MOUSE_LABELS, Controller
 from .model import KeyRef, RecordedMacro, SpamMacro
 
@@ -60,12 +61,16 @@ class App(tk.Tk):
         controller: Controller,
         events: queue.Queue,
         on_overlay_created: Optional[Callable[[int], None]] = None,
+        update_url: str = "",
+        on_update_url_change: Callable[[str], None] = lambda u: None,
     ):
         super().__init__()
         self.ctl = controller
         self.events = events
         self._on_overlay_created = on_overlay_created
-        self.title("Genshin Macro")
+        self.update_url = update_url
+        self._on_update_url_change = on_update_url_change
+        self.title(f"Genshin Macro v{updater.APP_VERSION}")
         self.minsize(860, 600)
         self._selected: Optional[str] = None
         self._capturing: Optional[ttk.Button] = None
@@ -95,6 +100,7 @@ class App(tk.Tk):
         self.path_lbl = ttk.Label(bar, text="", foreground="#666")
         self.path_lbl.pack(side="left", padx=(10, 0))
         self._refresh_path_label()
+        ttk.Button(bar, text="Cập nhật…", command=self._update_dialog).pack(side="right")
 
         left = ttk.Frame(self, padding=8)
         left.grid(row=1, column=0, sticky="nsw")
@@ -192,13 +198,17 @@ class App(tk.Tk):
         ttk.Button(ign_btns, text="− Bỏ phím đã chọn", command=self._remove_ignore).pack(fill="x", pady=(4, 0))
         ttk.Label(ign, text="Mặc định W A S D.\nPhím trong danh sách này\nkhông bao giờ bị ghi.", foreground="#666", justify="left").pack(side="left", padx=8)
 
-        ttk.Label(rf, text="Thao tác đã ghi (chọn một dòng để sửa):").grid(row=2, column=0, sticky="w", pady=(8, 2))
+        hdr = ttk.Frame(rf)
+        hdr.grid(row=2, column=0, sticky="ew", pady=(8, 2))
+        ttk.Label(hdr, text="Thao tác đã ghi (chọn một dòng để sửa). Chờ = thời gian từ thao tác trước.").pack(side="left")
+        self.total_lbl = ttk.Label(hdr, text="Tổng: 0 ms", font=("Segoe UI", 9, "bold"))
+        self.total_lbl.pack(side="right")
         tree_box = ttk.Frame(rf)
         tree_box.grid(row=3, column=0, sticky="nsew")
         tree_box.columnconfigure(0, weight=1)
         tree_box.rowconfigure(0, weight=1)
         self.event_tree = ttk.Treeview(tree_box, columns=("t", "action", "key"), show="headings", height=8, selectmode="browse")
-        self.event_tree.heading("t", text="Thời gian (ms)")
+        self.event_tree.heading("t", text="Chờ (ms)")
         self.event_tree.heading("action", text="Hành động")
         self.event_tree.heading("key", text="Phím / Chuột")
         self.event_tree.column("t", width=110, anchor="e")
@@ -212,7 +222,7 @@ class App(tk.Tk):
 
         edit = ttk.Frame(rf)
         edit.grid(row=4, column=0, sticky="ew", pady=(6, 0))
-        ttk.Label(edit, text="Thời gian:").pack(side="left")
+        ttk.Label(edit, text="Chờ (ms):").pack(side="left")
         self.ev_t_var = tk.IntVar(value=0)
         ttk.Spinbox(edit, from_=0, to=3_600_000, width=8, textvariable=self.ev_t_var).pack(side="left", padx=(2, 8))
         self.ev_action_var = tk.StringVar(value=ACTION_DOWN)
@@ -299,9 +309,12 @@ class App(tk.Tk):
 
     def _fill_events(self, m: RecordedMacro, keep_index: Optional[int] = None) -> None:
         self.event_tree.delete(*self.event_tree.get_children())
+        delays = self.ctl.event_delays(m.id)
         for i, ev in enumerate(m.events):
-            t, action, label = self.ctl.describe_event(ev)
-            self.event_tree.insert("", "end", iid=str(i), values=(str(t), action, label))
+            _, action, label = self.ctl.describe_event(ev)
+            self.event_tree.insert("", "end", iid=str(i), values=(str(delays[i]), action, label))
+        self.total_lbl.config(text=f"Tổng: {m.duration_ms} ms")
+        self.rec_info.config(text=f"{len(m.events)} sự kiện, {m.duration_ms} ms")
         if keep_index is not None and 0 <= keep_index < len(m.events):
             self.event_tree.selection_set(str(keep_index))
             self.event_tree.see(str(keep_index))
@@ -395,7 +408,7 @@ class App(tk.Tk):
         if not isinstance(m, RecordedMacro) or i is None or i >= len(m.events):
             return
         ev = m.events[i]
-        self.ev_t_var.set(ev.t)
+        self.ev_t_var.set(self.ctl.event_delays(m.id)[i])
         self.ev_action_var.set(ACTION_DOWN if ev.type.endswith("_down") else ACTION_UP)
         if ev.type.startswith("mouse"):
             self.ev_kind_var.set(MOUSE_LABELS.get(str(ev.code), MOUSE_LABELS["left"]))
@@ -417,9 +430,9 @@ class App(tk.Tk):
         if not isinstance(m, RecordedMacro) or i is None:
             return
         try:
-            t = int(self.ev_t_var.get())
+            delay = int(self.ev_t_var.get())
         except (tk.TclError, ValueError):
-            messagebox.showerror("Lỗi", "Thời gian phải là số ms")
+            messagebox.showerror("Lỗi", "Thời gian chờ phải là số ms")
             return
         down = self.ev_action_var.get() == ACTION_DOWN
         kind = self.ev_kind_var.get()
@@ -428,18 +441,15 @@ class App(tk.Tk):
                 if self._ev_key is None:
                     messagebox.showerror("Lỗi", "Chưa chọn phím")
                     return
-                self.ctl.update_event(m.id, i, t=t, type="key_down" if down else "key_up", code=self._ev_key.scan, ext=self._ev_key.ext)
+                self.ctl.update_event(m.id, i, type="key_down" if down else "key_up", code=self._ev_key.scan, ext=self._ev_key.ext)
             else:
                 button = "left" if kind == MOUSE_LABELS["left"] else "right"
-                self.ctl.update_event(m.id, i, t=t, type="mouse_down" if down else "mouse_up", code=button)
+                self.ctl.update_event(m.id, i, type="mouse_down" if down else "mouse_up", code=button)
+            self.ctl.set_event_delay(m.id, i, delay)
         except (ValueError, IndexError) as ex:
             messagebox.showerror("Lỗi", str(ex))
             return
-        m = self.ctl.get(m.id)
-        # follow the edited event to its new (sorted) position
-        new_index = next((j for j, e in enumerate(m.events) if e.t == t and (e.type.endswith("_down") == down)), i)
-        self.rec_info.config(text=f"{len(m.events)} sự kiện, {m.duration_ms} ms")
-        self._fill_events(m, keep_index=new_index)
+        self._fill_events(self.ctl.get(m.id), keep_index=i)
 
     def _delete_event(self) -> None:
         m = self._current()
@@ -447,9 +457,7 @@ class App(tk.Tk):
         if not isinstance(m, RecordedMacro) or i is None:
             return
         self.ctl.delete_event(m.id, i)
-        m = self.ctl.get(m.id)
-        self.rec_info.config(text=f"{len(m.events)} sự kiện, {m.duration_ms} ms")
-        self._fill_events(m, keep_index=min(i, len(m.events) - 1))
+        self._fill_events(self.ctl.get(m.id), keep_index=min(i, len(self.ctl.get(m.id).events) - 1))
 
     # ---- file path ---------------------------------------------------------------
     def _refresh_path_label(self) -> None:
@@ -501,6 +509,74 @@ class App(tk.Tk):
         self._refresh_path_label()
         self._refresh_list()
         self._update_status()
+
+    # ---- update ---------------------------------------------------------------------
+    def _update_dialog(self) -> None:
+        dlg = tk.Toplevel(self)
+        dlg.title("Cập nhật app")
+        dlg.transient(self)
+        dlg.resizable(False, False)
+        frm = ttk.Frame(dlg, padding=12)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text=f"Phiên bản hiện tại: v{updater.APP_VERSION}").grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(frm, text="Nguồn cập nhật (manifest.json):").grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 2))
+        url_var = tk.StringVar(value=self.update_url)
+        ttk.Entry(frm, textvariable=url_var, width=64).grid(row=2, column=0, columnspan=2, sticky="ew")
+        status = ttk.Label(frm, text="", foreground="#666", wraplength=420, justify="left")
+        status.grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+        def check() -> None:
+            url = url_var.get().strip()
+            if url != self.update_url:
+                self.update_url = url
+                self._on_update_url_change(url)
+            if not url:
+                status.config(text="Chưa có nguồn cập nhật.")
+                return
+            status.config(text="Đang kiểm tra…")
+            dlg.update_idletasks()
+            try:
+                found = updater.check_for_update(url)
+            except Exception as ex:
+                status.config(text=f"Không kiểm tra được: {ex}")
+                return
+            if found is None:
+                status.config(text="Bạn đang dùng bản mới nhất.")
+                return
+            version, dl = found
+            if not messagebox.askyesno("Có bản mới", f"Có bản v{version}. Tải về và cập nhật ngay?", parent=dlg):
+                return
+            self._install_from_url(dl, status)
+
+        def pick_file() -> None:
+            p = filedialog.askopenfilename(title="Chọn file GenshinMacro.exe mới", filetypes=[("Exe", "*.exe")], parent=dlg)
+            if p:
+                self._install_exe(Path(p))
+
+        ttk.Button(frm, text="Kiểm tra online", command=check).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ttk.Button(frm, text="Chọn file .exe…", command=pick_file).grid(row=3, column=1, sticky="w", pady=(8, 0), padx=(8, 0))
+
+    def _install_from_url(self, url: str, status: ttk.Label) -> None:
+        import tempfile
+
+        status.config(text="Đang tải…")
+        status.update_idletasks()
+        dest = Path(tempfile.gettempdir()) / "GenshinMacro_new.exe"
+        try:
+            updater.download(url, dest)
+        except Exception as ex:
+            status.config(text=f"Tải thất bại: {ex}")
+            return
+        self._install_exe(dest)
+
+    def _install_exe(self, new_exe: Path) -> None:
+        if updater.current_exe() is None:
+            messagebox.showinfo("Cập nhật", "Đang chạy từ mã nguồn, không tự thay được. Hãy chạy từ file .exe.")
+            return
+        if not messagebox.askyesno("Cập nhật", "App sẽ tắt, thay file exe và mở lại. Tiếp tục?"):
+            return
+        self.ctl.stop_all()
+        updater.apply_update(new_exe)
 
     # ---- overlay -------------------------------------------------------------------
     def _overlay_changed(self) -> None:

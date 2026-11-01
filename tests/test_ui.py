@@ -109,7 +109,7 @@ def test_event_list_shows_recorded_events(app):
     ctl.update(ctl.macros[0].id, events=[InputEvent(0, "key_down", 30), InputEvent(120, "key_up", 30), InputEvent(300, "mouse_down", "left")])
     a._load_editor()
     rows = [a.event_tree.item(i, "values") for i in a.event_tree.get_children()]
-    assert rows == [("0", "Nhấn", "SC30"), ("120", "Nhả", "SC30"), ("300", "Nhấn", "Chuột trái")]
+    assert rows == [("0", "Nhấn", "SC30"), ("120", "Nhả", "SC30"), ("180", "Nhấn", "Chuột trái")]  # delays
 
 
 def test_record_hotkey_capture_sets_config(app):

@@ -169,3 +169,25 @@ def test_load_from_missing_file_raises(tmp_path):
     ctl, *_ = _make(tmp_path)
     with pytest.raises(ValueError):
         ctl.load_from(tmp_path / "nope.json")
+
+
+def test_set_event_delay_shifts_following_events():
+    ctl, *_ = _make()
+    r = _with_events(ctl)  # t = 0, 100, 300, 350 -> delays 0, 100, 200, 50
+    ctl.set_event_delay(r.id, 2, 500)  # mouse_down now 500 ms after key_up
+    assert [e.t for e in ctl.get(r.id).events] == [0, 100, 600, 650]
+    ctl.set_event_delay(r.id, 0, 250)  # delay before the first event shifts everything
+    assert [e.t for e in ctl.get(r.id).events] == [250, 350, 850, 900]
+
+
+def test_set_event_delay_rejects_negative():
+    ctl, *_ = _make()
+    r = _with_events(ctl)
+    with pytest.raises(ValueError):
+        ctl.set_event_delay(r.id, 1, -1)
+
+
+def test_event_delays_helper():
+    ctl, *_ = _make()
+    r = _with_events(ctl)
+    assert ctl.event_delays(r.id) == [0, 100, 200, 50]

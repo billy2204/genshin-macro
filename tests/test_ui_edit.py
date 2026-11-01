@@ -69,22 +69,9 @@ def test_selecting_event_fills_edit_fields(app):
     items = a.event_tree.get_children()
     a.event_tree.selection_set(items[2])
     a._on_event_select()
-    assert a.ev_t_var.get() == 300
+    assert a.ev_t_var.get() == 200  # delay since previous event (300 - 100)
     assert a.ev_action_var.get() == "Nhấn"
     assert a.ev_kind_var.get() == "Chuột trái"
-
-
-def test_apply_event_edit_changes_time_and_resorts(app):
-    a, ctl, _, _ = app
-    r = _recorded_with_events(a, ctl)
-    items = a.event_tree.get_children()
-    a.event_tree.selection_set(items[1])
-    a._on_event_select()
-    a.ev_t_var.set(500)
-    a._apply_event()
-    rows = [a.event_tree.item(i, "values") for i in a.event_tree.get_children()]
-    assert [r_[0] for r_ in rows] == ["0", "300", "500"]
-    assert ctl.get(r.id).events[-1].type == "key_up"
 
 
 def test_apply_event_edit_to_mouse_right(app):
@@ -121,3 +108,25 @@ def test_save_as_and_open_update_path_label(app):
     assert str(other) in a.path_lbl.cget("text")
     assert a.listbox.size() == 0
     assert a.random_var.get() == 7
+
+
+def test_tree_shows_delay_not_absolute_time_and_total_line(app):
+    a, ctl, _, _ = app
+    r = _recorded_with_events(a, ctl)  # t = 0, 100, 300
+    rows = [a.event_tree.item(i, "values") for i in a.event_tree.get_children()]
+    assert [row[0] for row in rows] == ["0", "100", "200"]
+    assert "300 ms" in a.rec_info.cget("text")
+
+
+def test_apply_delay_edit_shifts_following(app):
+    a, ctl, _, _ = app
+    r = _recorded_with_events(a, ctl)
+    a.event_tree.selection_set(a.event_tree.get_children()[1])
+    a._on_event_select()
+    assert a.ev_t_var.get() == 100  # delay, not absolute
+    a.ev_t_var.set(400)
+    a._apply_event()
+    assert [e.t for e in ctl.get(r.id).events] == [0, 400, 600]
+    rows = [a.event_tree.item(i, "values") for i in a.event_tree.get_children()]
+    assert [row[0] for row in rows] == ["0", "400", "200"]
+    assert a.event_tree.selection() == ("1",)

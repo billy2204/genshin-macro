@@ -25,7 +25,7 @@ Mỗi macro Ghi có danh sách **Phím bỏ qua**: những phím này không bao
 
 ### Sửa từng thao tác
 
-Chọn một dòng trong bảng **Thao tác đã ghi**, sửa **Thời gian** (ms), **Nhấn/Nhả**, loại (Phím / Chuột trái / Chuột phải, với Phím thì bấm nút phím rồi nhấn phím mới) và bấm **Áp dụng**. Danh sách tự sắp xếp lại theo thời gian. **Xóa event** bỏ dòng đang chọn. Lưu ý nếu xóa một lần Nhấn mà giữ lại Nhả thì phím đó coi như không được bấm; macro vẫn nhả mọi phím đang giữ khi dừng.
+Bảng **Thao tác đã ghi** hiện cột **Chờ (ms)**: thời gian chờ kể từ thao tác trước. Dòng **Tổng** là tổng thời gian cả macro. Chọn một dòng, sửa **Chờ**, **Nhấn/Nhả**, loại (Phím / Chuột trái / Chuột phải, với Phím thì bấm nút phím rồi nhấn phím mới) và bấm **Áp dụng**. Đổi thời gian chờ của một dòng thì các dòng sau dịch theo. **Xóa event** bỏ dòng đang chọn, các dòng sau giữ nguyên mốc thời gian. Lưu ý nếu xóa một lần Nhấn mà giữ lại Nhả thì phím đó coi như không được bấm; macro vẫn nhả mọi phím đang giữ khi dừng.
 
 ## File macro
 
@@ -49,6 +49,12 @@ Lưu ý:
 - Phím tắt không hoạt động khi cửa sổ app (hoặc hộp thoại của app) đang được focus.
 - Macro tự dừng ngay nếu bạn chuyển sang cửa sổ khác (Alt+Tab), và nhả hết phím đang giữ.
 - Mặc định macro lưu trong `macros.json` cạnh file exe (đổi được bằng Lưu thành…). Nếu file hỏng, app sao nó thành `.bak` và bắt đầu lại từ trống.
+
+## Cập nhật app
+
+Nút **Cập nhật…** trên thanh công cụ. Mặc định kiểm tra bản mới ở GitHub Releases của repo này (file `manifest.json`). Có bản mới thì tải về, app tự tắt, thay file exe và mở lại. Cũng có thể **Chọn file .exe…** đã tải sẵn để thay. Nguồn cập nhật lưu trong `settings.json`.
+
+Phát hành bản mới: tăng `APP_VERSION` trong `genshin_macro/updater.py`, build, rồi tạo release có hai file `GenshinMacro.exe` và `manifest.json` (`{"version": "x.y.z", "url": "<link tải GenshinMacro.exe>"}`).
 
 ## Build
 

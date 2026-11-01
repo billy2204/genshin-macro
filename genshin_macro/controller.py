@@ -188,6 +188,27 @@ class Controller:
             m.events.sort(key=lambda e: e.t)  # stable: keeps order of equal times
             self._save(self._config)
 
+    def event_delays(self, macro_id: str) -> list[int]:
+        """Delay of each event relative to the previous one (first = its own t)."""
+        evs = self._recorded(macro_id).events
+        return [e.t if i == 0 else e.t - evs[i - 1].t for i, e in enumerate(evs)]
+
+    def set_event_delay(self, macro_id: str, index: int, delay_ms: int) -> None:
+        """Set the wait before event `index`; all later events shift by the same amount."""
+        with self._lock:
+            m = self._recorded(macro_id)
+            delay_ms = int(delay_ms)
+            if delay_ms < 0:
+                raise ValueError("Thời gian chờ phải >= 0")
+            ev = m.events[index]
+            prev_t = m.events[index - 1].t if index > 0 else 0
+            shift = (prev_t + delay_ms) - ev.t
+            if shift:
+                for j in range(index, len(m.events)):
+                    e = m.events[j]
+                    m.events[j] = InputEvent(t=e.t + shift, type=e.type, code=e.code, ext=e.ext)
+            self._save(self._config)
+
     def delete_event(self, macro_id: str, index: int) -> None:
         with self._lock:
             m = self._recorded(macro_id)

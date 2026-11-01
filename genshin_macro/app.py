@@ -21,22 +21,39 @@ def app_dir() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _settings_file() -> Path:
+    return app_dir() / "settings.json"
+
+
+def load_settings() -> dict:
+    try:
+        data = json.loads(_settings_file().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_settings(**changes) -> None:
+    data = load_settings()
+    data.update(changes)
+    try:
+        _settings_file().write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
 def config_path() -> Path:
     """Default macros.json next to the exe, unless settings.json remembers another path."""
     default = app_dir() / "macros.json"
     try:
-        data = json.loads((app_dir() / "settings.json").read_text(encoding="utf-8"))
-        p = Path(data["config_path"])
+        p = Path(load_settings()["config_path"])
         return p if p.is_file() else default
     except Exception:
         return default
 
 
 def remember_config_path(path: Path) -> None:
-    try:
-        (app_dir() / "settings.json").write_text(json.dumps({"config_path": str(path)}), encoding="utf-8")
-    except OSError:
-        pass
+    save_settings(config_path=str(path))
 
 
 def main() -> int:
@@ -80,8 +97,15 @@ def main() -> int:
 
     from .listeners import start_listeners
     from .ui import App
+    from .updater import DEFAULT_UPDATE_URL
 
-    app = App(controller, events, on_overlay_created=winput.make_noactivate)
+    app = App(
+        controller,
+        events,
+        on_overlay_created=winput.make_noactivate,
+        update_url=load_settings().get("update_url", DEFAULT_UPDATE_URL),
+        on_update_url_change=lambda u: save_settings(update_url=u),
+    )
     kb, ms = start_listeners(controller)
 
     def on_close() -> None:
