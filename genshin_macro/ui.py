@@ -10,6 +10,7 @@ from typing import Callable, Optional
 
 from . import updater
 from .controller import MOUSE_LABELS, Controller
+from .resources import resource_path
 from .model import KeyRef, RecordedMacro, SpamMacro
 
 POLL_MS = 50
@@ -78,6 +79,10 @@ class App(tk.Tk):
         self.update_url = update_url
         self._on_update_url_change = on_update_url_change
         self.title(f"Genshin Macro v{updater.APP_VERSION}")
+        try:
+            self.iconbitmap(default=str(resource_path("assets/icon.ico")))
+        except tk.TclError:
+            pass  # icon missing: not fatal
         self.minsize(860, 600)
         self._selected: Optional[str] = None
         self._capturing: Optional[ttk.Button] = None

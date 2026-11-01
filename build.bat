@@ -9,8 +9,9 @@ python -m pip install -q -r requirements.txt
 for /f "delims=" %%v in ('python -c "from genshin_macro.updater import APP_VERSION; print(APP_VERSION)"') do set VER=%%v
 echo Version %VER%
 
-python -m PyInstaller --noconfirm --onedir --noconsole --uac-admin --name GenshinMacro main.py || goto :err
-python -m PyInstaller --noconfirm --onefile --noconsole --uac-admin --name GenshinMacro --distpath dist\portable main.py || goto :err
+set PYI=--noconfirm --noconsole --uac-admin --name GenshinMacro --icon assets\icon.ico --add-data "assets\icon.ico;assets"
+python -m PyInstaller %PYI% --onedir main.py || goto :err
+python -m PyInstaller %PYI% --onefile --distpath dist\portable main.py || goto :err
 copy /y dist\portable\GenshinMacro.exe dist\GenshinMacro.exe >nul
 
 set ISCC="%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"

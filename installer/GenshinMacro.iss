@@ -35,6 +35,7 @@ CloseApplications=yes
 CloseApplicationsFilter=*.exe
 RestartApplications=yes
 DisableProgramGroupPage=yes
+SetupIconFile=..\assets\icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
