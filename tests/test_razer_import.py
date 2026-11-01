@@ -72,5 +72,5 @@ def test_real_skirk_file_imports():
     assert name == "Skirk"
     assert len(events) == 24 + 162  # every key/mouse event in the file (Razer's own mouse up/down counts are unbalanced)
     assert sum(1 for e in events if e.type == "key_down") == sum(1 for e in events if e.type == "key_up") == 12
-    assert events[-1].t == pytest.approx(11910, abs=30)  # total of all delays, 11.91 s
+    assert events[-1].t == 11700  # all delays (11.91 s) minus the trailing 0.21 s wait after the last event
     assert all(events[i].t <= events[i + 1].t for i in range(len(events) - 1))
