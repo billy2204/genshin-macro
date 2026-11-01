@@ -5,25 +5,73 @@ from __future__ import annotations
 import queue
 import tkinter as tk
 from tkinter import messagebox, ttk
-from typing import Optional
+from typing import Callable, Optional
 
 from .controller import Controller
 from .model import KeyRef, RecordedMacro, SpamMacro
 
 POLL_MS = 50
+COLOR_IDLE, COLOR_REC, COLOR_RUN = "#2a7", "#c33", "#27c"
+
+
+class Overlay(tk.Toplevel):
+    """Small always-on-top, borderless status window shown over the game. Draggable."""
+
+    def __init__(self, master: tk.Tk, on_created: Optional[Callable[[int], None]] = None):
+        super().__init__(master)
+        self.overrideredirect(True)
+        self.attributes("-topmost", True)
+        try:
+            self.attributes("-alpha", 0.85)
+        except tk.TclError:
+            pass
+        self.configure(bg="#111")
+        self.label = tk.Label(self, text="", fg="#ddd", bg="#111", font=("Segoe UI", 11, "bold"), padx=10, pady=4)
+        self.label.pack()
+        self.geometry("+20+20")
+        self._drag = (0, 0)
+        for w in (self, self.label):
+            w.bind("<ButtonPress-1>", self._start_drag)
+            w.bind("<B1-Motion>", self._do_drag)
+        self.update_idletasks()
+        if on_created is not None:
+            try:
+                on_created(int(self.winfo_id()))
+            except Exception:
+                pass
+
+    def _start_drag(self, ev) -> None:
+        self._drag = (ev.x_root - self.winfo_x(), ev.y_root - self.winfo_y())
+
+    def _do_drag(self, ev) -> None:
+        self.geometry(f"+{ev.x_root - self._drag[0]}+{ev.y_root - self._drag[1]}")
+
+    def set_status(self, text: str, color: str) -> None:
+        self.label.config(text=text, fg=color)
 
 
 class App(tk.Tk):
-    def __init__(self, controller: Controller, events: queue.Queue):
+    def __init__(
+        self,
+        controller: Controller,
+        events: queue.Queue,
+        on_overlay_created: Optional[Callable[[int], None]] = None,
+    ):
         super().__init__()
         self.ctl = controller
         self.events = events
+        self._on_overlay_created = on_overlay_created
         self.title("Genshin Macro")
-        self.minsize(640, 400)
+        self.minsize(720, 460)
         self._selected: Optional[str] = None
-        self._capturing: Optional[tk.Button] = None
+        self._capturing: Optional[ttk.Button] = None
+        self._ids: list[str] = []
+        self.overlay: Optional[Overlay] = None
         self._build()
         self._refresh_list()
+        if self.ctl.overlay:
+            self._show_overlay()
+        self._update_status()
         self.after(POLL_MS, self._poll)
 
     # ---- layout ------------------------------------------------------------
@@ -56,7 +104,17 @@ class App(tk.Tk):
         sp.pack(side="left", padx=(4, 12))
         sp.bind("<FocusOut>", lambda e: self._random_changed())
         sp.bind("<Return>", lambda e: self._random_changed())
-        self.status = ttk.Label(bottom, text="Sẵn sàng", foreground="#2a7")
+
+        ttk.Label(bottom, text="Phím Ghi:").pack(side="left")
+        rh = self.ctl.record_hotkey
+        self.record_btn = ttk.Button(bottom, text=rh.label if rh else "(chưa có)", command=lambda: self._capture("record"))
+        self.record_btn.pack(side="left", padx=(4, 12))
+        self.record_btn.bind("<Button-3>", lambda ev: self._set_record_hotkey(None))
+
+        self.overlay_var = tk.BooleanVar(value=self.ctl.overlay)
+        ttk.Checkbutton(bottom, text="Overlay", variable=self.overlay_var, command=self._overlay_changed).pack(side="left", padx=(0, 12))
+
+        self.status = ttk.Label(bottom, text="Sẵn sàng", foreground=COLOR_IDLE)
         self.status.pack(side="left")
 
     def _build_editor(self) -> None:
@@ -97,22 +155,45 @@ class App(tk.Tk):
 
         # recorded section
         self.rec_frame = ttk.Frame(e)
-        self.rec_frame.grid(row=r, column=0, columnspan=2, sticky="ew")
-        self.rec_btn = ttk.Button(self.rec_frame, text="● Ghi", command=self._toggle_record)
-        self.rec_btn.grid(row=0, column=0, sticky="w", pady=2)
-        self.rec_info = ttk.Label(self.rec_frame, text="0 sự kiện, 0 ms")
-        self.rec_info.grid(row=0, column=1, sticky="w", padx=8)
+        self.rec_frame.grid(row=r, column=0, columnspan=2, sticky="nsew")
+        e.rowconfigure(r, weight=1)
+        self.rec_frame.columnconfigure(0, weight=1)
+        self.rec_frame.rowconfigure(2, weight=1)
+        top = ttk.Frame(self.rec_frame)
+        top.grid(row=0, column=0, sticky="ew")
+        self.rec_btn = ttk.Button(top, text="● Ghi", command=self._toggle_record)
+        self.rec_btn.pack(side="left")
+        self.rec_info = ttk.Label(top, text="0 sự kiện, 0 ms")
+        self.rec_info.pack(side="left", padx=8)
         self.loop_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.rec_frame, text="Lặp lại đến khi dừng", variable=self.loop_var, command=self._commit_loop).grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=2
-        )
+        ttk.Checkbutton(top, text="Lặp lại đến khi dừng", variable=self.loop_var, command=self._commit_loop).pack(side="left", padx=8)
+        ttk.Label(self.rec_frame, text="Thao tác đã ghi:").grid(row=1, column=0, sticky="w", pady=(8, 2))
+        tree_box = ttk.Frame(self.rec_frame)
+        tree_box.grid(row=2, column=0, sticky="nsew")
+        tree_box.columnconfigure(0, weight=1)
+        tree_box.rowconfigure(0, weight=1)
+        self.event_tree = ttk.Treeview(tree_box, columns=("t", "action", "key"), show="headings", height=10)
+        self.event_tree.heading("t", text="Thời gian (ms)")
+        self.event_tree.heading("action", text="Hành động")
+        self.event_tree.heading("key", text="Phím / Chuột")
+        self.event_tree.column("t", width=110, anchor="e")
+        self.event_tree.column("action", width=90, anchor="center")
+        self.event_tree.column("key", width=160, anchor="w")
+        self.event_tree.grid(row=0, column=0, sticky="nsew")
+        sb = ttk.Scrollbar(tree_box, orient="vertical", command=self.event_tree.yview)
+        sb.grid(row=0, column=1, sticky="ns")
+        self.event_tree.configure(yscrollcommand=sb.set)
         r += 1
         ttk.Label(
             e,
-            text="Bấm phím tắt khi đang trong game để chạy / dừng.\nKhi đang ghi, bấm phím tắt của macro đó để dừng ghi.",
+            text=(
+                "Bấm phím tắt khi đang trong game để chạy / dừng macro.\n"
+                "Ghi: chọn macro kiểu Ghi, bấm phím Ghi (hoặc nút ● Ghi) để bắt đầu, bấm lại để dừng.\n"
+                "Phím tắt của chính macro đó cũng dừng ghi."
+            ),
             foreground="#666",
             justify="left",
-        ).grid(row=r + 1, column=0, columnspan=2, sticky="w", pady=(16, 0))
+        ).grid(row=r, column=0, columnspan=2, sticky="w", pady=(10, 0))
         self._show_kind(None)
 
     # ---- list ----------------------------------------------------------------
@@ -131,15 +212,20 @@ class App(tk.Tk):
             self._selected = ids[0] if ids else None
             if ids:
                 self.listbox.selection_set(0)
+        self.ctl.selected_id = self._selected
         self._load_editor()
 
     def _on_select(self, _ev=None) -> None:
         sel = self.listbox.curselection()
         self._selected = self._ids[sel[0]] if sel else None
+        self.ctl.selected_id = self._selected
         self._load_editor()
 
     def _current(self):
-        return self.ctl.get(self._selected) if self._selected else None
+        try:
+            return self.ctl.get(self._selected) if self._selected else None
+        except KeyError:
+            return None
 
     def _load_editor(self) -> None:
         m = self._current()
@@ -160,7 +246,14 @@ class App(tk.Tk):
             self.loop_var.set(m.loop)
             self.rec_info.config(text=f"{len(m.events)} sự kiện, {m.duration_ms} ms")
             self.rec_btn.config(text="■ Dừng ghi" if self.ctl.recording_id == m.id else "● Ghi")
+            self._fill_events(m)
             self._show_kind("recorded")
+
+    def _fill_events(self, m: RecordedMacro) -> None:
+        self.event_tree.delete(*self.event_tree.get_children())
+        for ev in m.events:
+            t, action, label = self.ctl.describe_event(ev)
+            self.event_tree.insert("", "end", values=(str(t), action, label))
 
     def _show_kind(self, kind: Optional[str]) -> None:
         self.spam_frame.grid_remove()
@@ -169,9 +262,7 @@ class App(tk.Tk):
             self.spam_frame.grid()
         elif kind == "recorded":
             self.rec_frame.grid()
-        state = "normal" if kind else "disabled"
-        for w in (self.hotkey_btn,):
-            w.config(state=state)
+        self.hotkey_btn.config(state="normal" if kind else "disabled")
 
     # ---- actions -------------------------------------------------------------
     def _add_spam(self) -> None:
@@ -197,6 +288,14 @@ class App(tk.Tk):
         except ValueError as ex:
             messagebox.showerror("Lỗi", str(ex))
         self._refresh_list()
+
+    def _set_record_hotkey(self, ref: Optional[KeyRef]) -> None:
+        try:
+            self.ctl.set_record_hotkey(ref)
+        except ValueError as ex:
+            messagebox.showerror("Lỗi", str(ex))
+        rh = self.ctl.record_hotkey
+        self.record_btn.config(text=rh.label if rh else "(chưa có)")
 
     def _commit_name(self) -> None:
         m = self._current()
@@ -226,22 +325,38 @@ class App(tk.Tk):
         if v != self.ctl.random_ms:
             self.ctl.set_random_ms(v)
 
+    def _overlay_changed(self) -> None:
+        on = bool(self.overlay_var.get())
+        self.ctl.set_overlay(on)
+        if on:
+            self._show_overlay()
+        else:
+            self._hide_overlay()
+
+    def _show_overlay(self) -> None:
+        if self.overlay is None:
+            self.overlay = Overlay(self, self._on_overlay_created)
+            self._update_status()
+
+    def _hide_overlay(self) -> None:
+        if self.overlay is not None:
+            self.overlay.destroy()
+            self.overlay = None
+
     def _capture(self, field: str) -> None:
-        if not self._selected:
+        btn = {"hotkey": self.hotkey_btn, "key": self.key_btn, "record": self.record_btn}[field]
+        if field != "record" and not self._selected:
             return
-        btn = self.hotkey_btn if field == "hotkey" else self.key_btn
         if self._capturing is not None:
             self.ctl.cancel_capture()
-            self._load_editor()
             self._capturing = None
+            self._load_editor()
+            rh = self.ctl.record_hotkey
+            self.record_btn.config(text=rh.label if rh else "(chưa có)")
             return
         self._capturing = btn
         btn.config(text="Nhấn phím…")
-
-        def got(ref: KeyRef) -> None:
-            self.events.put(("captured", field, ref))
-
-        self.ctl.begin_capture(got)
+        self.ctl.begin_capture(lambda ref: self.events.put(("captured", field, ref)))
 
     def _toggle_record(self) -> None:
         m = self._current()
@@ -251,19 +366,14 @@ class App(tk.Tk):
             self.ctl.stop_recording()
         else:
             self.ctl.start_recording(m.id)
-            messagebox.showinfo(
-                "Đang ghi",
-                f"Chuyển sang game và đánh combo.\nBấm phím tắt của macro ({m.hotkey.label if m.hotkey else 'chưa đặt'}) "
-                "hoặc quay lại đây bấm Dừng ghi để kết thúc.",
-            )
         self._load_editor()
+        self._update_status()
 
     # ---- queue from listener thread ------------------------------------------
     def _poll(self) -> None:
         try:
             while True:
-                item = self.events.get_nowait()
-                self._handle(item)
+                self._handle(self.events.get_nowait())
         except queue.Empty:
             pass
         self.after(POLL_MS, self._poll)
@@ -273,19 +383,26 @@ class App(tk.Tk):
         if kind == "captured":
             _, field, ref = item
             self._capturing = None
-            self._set_field(field, ref)
+            if field == "record":
+                self._set_record_hotkey(ref)
+            else:
+                self._set_field(field, ref)
         elif kind in ("state", "recording"):
             self._update_status()
             self._load_editor()
 
     def _update_status(self) -> None:
         rid, pid = self.ctl.recording_id, self.ctl.running_id
-        if rid:
-            self.status.config(text=f"Đang ghi: {self.ctl.get(rid).name}", foreground="#c33")
-        elif pid:
-            try:
-                self.status.config(text=f"Đang chạy: {self.ctl.get(pid).name}", foreground="#27c")
-            except KeyError:
-                self.status.config(text="Sẵn sàng", foreground="#2a7")
-        else:
-            self.status.config(text="Sẵn sàng", foreground="#2a7")
+        text, color, ov = "Sẵn sàng", COLOR_IDLE, "Sẵn sàng"
+        try:
+            if rid:
+                name = self.ctl.get(rid).name
+                text, color, ov = f"Đang ghi: {name}", COLOR_REC, f"● GHI: {name}"
+            elif pid:
+                name = self.ctl.get(pid).name
+                text, color, ov = f"Đang chạy: {name}", COLOR_RUN, f"▶ {name}"
+        except KeyError:
+            pass
+        self.status.config(text=text, foreground=color)
+        if self.overlay is not None:
+            self.overlay.set_status(ov, color if color != COLOR_IDLE else "#ddd")

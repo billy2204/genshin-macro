@@ -58,7 +58,7 @@ def main() -> int:
     from .listeners import start_listeners
     from .ui import App
 
-    app = App(controller, events)
+    app = App(controller, events, on_overlay_created=winput.make_noactivate)
     app.update_idletasks()
     app_hwnd["value"] = winput.root_hwnd(app.winfo_id())
     kb, ms = start_listeners(controller)

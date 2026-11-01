@@ -6,7 +6,9 @@ import threading
 from typing import Callable, Optional
 
 from .hotkeys import HotkeyManager
-from .model import Config, KeyRef, Macro, RecordedMacro, SpamMacro, new_id
+from .model import Config, InputEvent, KeyRef, Macro, RecordedMacro, SpamMacro, new_id
+
+MOUSE_LABELS = {"left": "Chuột trái", "right": "Chuột phải"}
 from .recorder import Recorder
 
 
@@ -31,6 +33,7 @@ class Controller:
         self._lock = threading.RLock()
         self._recording_id: Optional[str] = None
         self._capture_cb: Optional[Callable[[KeyRef], None]] = None
+        self.selected_id: Optional[str] = None  # set by the UI; target of the record hotkey
         self.rebind_all()
 
     # ---- queries -----------------------------------------------------------
@@ -41,6 +44,14 @@ class Controller:
     @property
     def random_ms(self) -> int:
         return self._config.random_ms
+
+    @property
+    def record_hotkey(self) -> Optional[KeyRef]:
+        return self._config.record_hotkey
+
+    @property
+    def overlay(self) -> bool:
+        return self._config.overlay
 
     @property
     def recording_id(self) -> Optional[str]:
@@ -87,10 +98,7 @@ class Controller:
         with self._lock:
             m = self.get(macro_id)
             if "hotkey" in fields and fields["hotkey"] is not None:
-                hk: KeyRef = fields["hotkey"]
-                for other in self._config.macros:
-                    if other.id != macro_id and other.hotkey and other.hotkey.key() == hk.key():
-                        raise ValueError(f"Phím tắt đã dùng cho '{other.name}'")
+                self._check_hotkey_free(fields["hotkey"], exclude_id=macro_id)
             if "interval_ms" in fields:
                 fields["interval_ms"] = max(1, int(fields["interval_ms"]))
             for k, v in fields.items():
@@ -98,6 +106,34 @@ class Controller:
                     raise AttributeError(k)
                 setattr(m, k, v)
             self._changed()
+
+    def _check_hotkey_free(self, hk: KeyRef, exclude_id: Optional[str] = None, allow_record: bool = False) -> None:
+        for other in self._config.macros:
+            if other.id != exclude_id and other.hotkey and other.hotkey.key() == hk.key():
+                raise ValueError(f"Phím tắt đã dùng cho '{other.name}'")
+        rh = self._config.record_hotkey
+        if not allow_record and rh is not None and rh.key() == hk.key():
+            raise ValueError("Phím này đang là phím Ghi")
+
+    def set_record_hotkey(self, hk: Optional[KeyRef]) -> None:
+        with self._lock:
+            if hk is not None:
+                self._check_hotkey_free(hk, allow_record=True)
+            self._config.record_hotkey = hk
+            self._changed()
+
+    def set_overlay(self, on: bool) -> None:
+        with self._lock:
+            self._config.overlay = bool(on)
+            self._save(self._config)
+
+    def describe_event(self, ev: InputEvent) -> tuple[int, str, str]:
+        action = "Nhấn" if ev.type.endswith("_down") else "Nhả"
+        if ev.type.startswith("mouse"):
+            label = MOUSE_LABELS.get(str(ev.code), str(ev.code))
+        else:
+            label = self._label_for(int(ev.code), bool(ev.ext))
+        return (ev.t, action, label)
 
     def set_random_ms(self, value: int) -> None:
         with self._lock:
@@ -113,6 +149,9 @@ class Controller:
         for m in self._config.macros:
             if m.hotkey is not None:
                 self._hotkeys.bind(m.hotkey.scan, m.hotkey.ext, self._make_hotkey_cb(m.id))
+        rh = self._config.record_hotkey
+        if rh is not None:
+            self._hotkeys.bind(rh.scan, rh.ext, self.toggle_recording)
 
     def _make_hotkey_cb(self, macro_id: str) -> Callable[[], None]:
         def cb() -> None:
@@ -142,6 +181,22 @@ class Controller:
             self._recording_id = macro_id
             self._recorder.start()
             self._events.put(("recording", macro_id))
+
+    def toggle_recording(self) -> None:
+        """Record hotkey: stop if recording, else start recording the selected Recorded macro."""
+        with self._lock:
+            if self._recording_id is not None:
+                self.stop_recording()
+                return
+            sid = self.selected_id
+            if sid is None:
+                return
+            try:
+                m = self.get(sid)
+            except KeyError:
+                return
+            if isinstance(m, RecordedMacro):
+                self.start_recording(sid)
 
     def stop_recording(self) -> None:
         with self._lock:

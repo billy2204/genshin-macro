@@ -78,3 +78,18 @@ def test_save_writes_valid_json_with_version(tmp_path):
     assert data["version"] == 1
     assert data["random_ms"] == 150
     assert len(data["macros"]) == 2
+
+
+def test_record_hotkey_and_overlay_roundtrip(tmp_path):
+    cfg = Config(random_ms=100, macros=[], record_hotkey=KeyRef(68, False, "F10"), overlay=False)
+    path = tmp_path / "m.json"
+    cfg.save(path)
+    loaded = Config.load(path)
+    assert loaded.record_hotkey == KeyRef(68, False, "F10")
+    assert loaded.overlay is False
+
+
+def test_defaults_for_record_hotkey_and_overlay():
+    cfg = Config.from_dict({"random_ms": 100, "macros": []})
+    assert cfg.record_hotkey is None
+    assert cfg.overlay is True

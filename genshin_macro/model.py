@@ -131,11 +131,15 @@ def macro_from_dict(d: dict) -> Macro:
 class Config:
     random_ms: int = DEFAULT_RANDOM_MS
     macros: list[Macro] = field(default_factory=list)
+    record_hotkey: Optional[KeyRef] = None
+    overlay: bool = True
 
     def to_dict(self) -> dict:
         return {
             "version": CONFIG_VERSION,
             "random_ms": self.random_ms,
+            "record_hotkey": self.record_hotkey.to_dict() if self.record_hotkey else None,
+            "overlay": self.overlay,
             "macros": [m.to_dict() for m in self.macros],
         }
 
@@ -145,7 +149,12 @@ class Config:
             return cls()
         random_ms = max(0, int(d.get("random_ms", DEFAULT_RANDOM_MS)))
         macros = [macro_from_dict(m) for m in d.get("macros", [])]
-        return cls(random_ms=random_ms, macros=macros)
+        return cls(
+            random_ms=random_ms,
+            macros=macros,
+            record_hotkey=KeyRef.from_dict(d.get("record_hotkey")),
+            overlay=bool(d.get("overlay", True)),
+        )
 
     @classmethod
     def load(cls, path: Path) -> "Config":

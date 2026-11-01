@@ -168,3 +168,66 @@ def test_events_queue_receives_recording_state():
     while not events.empty():
         items.append(events.get_nowait())
     assert ("recording", r.id) in items and ("recording", None) in items
+
+
+F10 = KeyRef(68, False, "F10")
+
+
+def test_record_hotkey_toggles_recording_of_selected_macro():
+    ctl, player, saved, clock, fg, events = _make()
+    r = ctl.add_recorded()
+    ctl.set_record_hotkey(F10)
+    ctl.selected_id = r.id
+    ctl.on_key(68, False, True)
+    ctl.on_key(68, False, False)
+    assert ctl.recording_id == r.id
+    clock.t = 1.0
+    ctl.on_key(30, False, True)
+    clock.t = 1.1
+    ctl.on_key(30, False, False)
+    clock.t = 2.0
+    ctl.on_key(68, False, True)
+    ctl.on_key(68, False, False)
+    assert ctl.recording_id is None
+    assert [(e.type, e.code) for e in ctl.get(r.id).events] == [("key_down", 30), ("key_up", 30)]
+    assert player.toggled == []
+
+
+def test_record_hotkey_ignored_when_selected_is_spam_or_none():
+    ctl, *_ = _make()
+    s = ctl.add_spam()
+    ctl.set_record_hotkey(F10)
+    ctl.on_key(68, False, True)
+    ctl.on_key(68, False, False)
+    assert ctl.recording_id is None
+    ctl.selected_id = s.id
+    ctl.on_key(68, False, True)
+    assert ctl.recording_id is None
+
+
+def test_record_hotkey_conflicts_with_macro_hotkey_both_directions():
+    ctl, *_ = _make()
+    a = ctl.add_spam()
+    ctl.update(a.id, hotkey=F8)
+    with pytest.raises(ValueError):
+        ctl.set_record_hotkey(F8)
+    ctl.set_record_hotkey(F10)
+    with pytest.raises(ValueError):
+        ctl.update(a.id, hotkey=F10)
+    assert ctl.record_hotkey == F10
+
+
+def test_set_overlay_persists():
+    ctl, _, saved, *_ = _make()
+    ctl.set_overlay(False)
+    assert ctl.overlay is False and saved
+
+
+def test_describe_event_uses_labels():
+    ctl, *_ = _make()
+    from genshin_macro.model import InputEvent
+
+    assert ctl.describe_event(InputEvent(0, "key_down", 30)) == (0, "Nhấn", "K30")
+    assert ctl.describe_event(InputEvent(120, "key_up", 30)) == (120, "Nhả", "K30")
+    assert ctl.describe_event(InputEvent(200, "mouse_down", "left")) == (200, "Nhấn", "Chuột trái")
+    assert ctl.describe_event(InputEvent(250, "mouse_up", "right")) == (250, "Nhả", "Chuột phải")

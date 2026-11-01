@@ -88,3 +88,51 @@ def test_status_reflects_recording(app, monkeypatch):
     a._toggle_record()
     a._poll()
     assert a.status.cget("text") == "Sẵn sàng"
+
+
+def test_selection_updates_controller_selected_id(app):
+    a, ctl, _ = app
+    a._add_spam()
+    a._add_recorded()
+    assert ctl.selected_id == ctl.macros[1].id
+    a.listbox.selection_clear(0, "end")
+    a.listbox.selection_set(0)
+    a._on_select()
+    assert ctl.selected_id == ctl.macros[0].id
+
+
+def test_event_list_shows_recorded_events(app):
+    from genshin_macro.model import InputEvent
+
+    a, ctl, _ = app
+    a._add_recorded()
+    ctl.update(ctl.macros[0].id, events=[InputEvent(0, "key_down", 30), InputEvent(120, "key_up", 30), InputEvent(300, "mouse_down", "left")])
+    a._load_editor()
+    rows = [a.event_tree.item(i, "values") for i in a.event_tree.get_children()]
+    assert rows == [("0", "Nhấn", "SC30"), ("120", "Nhả", "SC30"), ("300", "Nhấn", "Chuột trái")]
+
+
+def test_record_hotkey_capture_sets_config(app):
+    a, ctl, _ = app
+    a._capture("record")
+    assert a.record_btn.cget("text") == "Nhấn phím…"
+    ctl.on_key(68, False, True)
+    a._poll()
+    assert ctl.record_hotkey == KeyRef(68, False, "SC68")
+    assert a.record_btn.cget("text") == "SC68"
+
+
+def test_overlay_toggle_creates_and_destroys_window(app, monkeypatch):
+    a, ctl, _ = app
+    assert a.overlay is not None  # default on
+    a.overlay_var.set(False)
+    a._overlay_changed()
+    assert a.overlay is None and ctl.overlay is False
+    a.overlay_var.set(True)
+    a._overlay_changed()
+    assert a.overlay is not None and ctl.overlay is True
+    monkeypatch.setattr("genshin_macro.ui.messagebox.showinfo", lambda *x: None)
+    a._add_recorded()
+    a._toggle_record()
+    a._poll()
+    assert a.overlay.label.cget("text").startswith("● GHI")

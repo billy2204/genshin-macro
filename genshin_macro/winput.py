@@ -71,6 +71,9 @@ user32.GetAncestor.restype = wintypes.HWND
 
 GA_ROOT = 2
 ERROR_ALREADY_EXISTS = 183
+GWL_EXSTYLE = -20
+WS_EX_NOACTIVATE = 0x08000000
+WS_EX_TOOLWINDOW = 0x00000080
 
 
 def _send(inp: INPUT) -> None:
@@ -116,6 +119,14 @@ def foreground_hwnd() -> int:
 
 def root_hwnd(hwnd: int) -> int:
     return int(user32.GetAncestor(hwnd, GA_ROOT) or hwnd)
+
+
+def make_noactivate(hwnd: int) -> None:
+    """Make a top-level window never take keyboard focus (overlay): clicks on it
+    don't steal the game's focus, and it stays out of Alt+Tab."""
+    hwnd = root_hwnd(hwnd)
+    style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW)
 
 
 def label_for(scan: int, ext: bool) -> str:
