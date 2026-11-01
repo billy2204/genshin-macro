@@ -71,3 +71,41 @@ def test_apply_update_spawns_script_with_clean_env(monkeypatch, tmp_path):
     updater.apply_update(tmp_path / "new.exe")
     assert spawned["env"] is not None and "_PYI_PARENT_PROCESS_LEVEL" not in spawned["env"]
     assert spawned["args"][0] == "cmd"
+
+
+def test_swap_script_waits_for_both_pids_and_retries_copy(tmp_path):
+    script = make_swap_script(pid=1234, target=tmp_path / "a.exe", new_exe=tmp_path / "b.exe", parent_pid=777)
+    assert '"PID eq 1234"' in script and '"PID eq 777"' in script
+    assert ":copy" in script and "goto copy" in script  # retry loop until the exe is no longer locked
+    assert "fc " in script or "if errorlevel 1" in script
+
+
+def test_parent_pid_is_a_positive_int():
+    ppid = updater.parent_pid()
+    assert isinstance(ppid, int) and ppid > 0 and ppid != updater.os.getpid()
+
+
+def test_is_installed_detects_inno_uninstaller(tmp_path, monkeypatch):
+    exe = tmp_path / "GenshinMacro.exe"
+    exe.write_bytes(b"x")
+    monkeypatch.setattr(updater, "current_exe", lambda: exe)
+    assert updater.is_installed() is False
+    (tmp_path / "unins000.exe").write_bytes(b"x")
+    assert updater.is_installed() is True
+
+
+def test_run_installer_uses_silent_flags(monkeypatch, tmp_path):
+    spawned = {}
+
+    class FakePopen:
+        def __init__(self, args, **kw):
+            spawned["args"] = args
+            spawned["env"] = kw.get("env")
+
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setattr(updater.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(updater.os, "_exit", lambda code: None)
+    updater.run_installer(tmp_path / "Setup.exe")
+    assert spawned["args"][0] == str(tmp_path / "Setup.exe")
+    assert "/VERYSILENT" in spawned["args"] and "/CLOSEAPPLICATIONS" in spawned["args"]
+    assert "_PYI_PARENT_PROCESS_LEVEL" not in spawned["env"]

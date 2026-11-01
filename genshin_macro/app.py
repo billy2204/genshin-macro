@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -21,8 +23,35 @@ def app_dir() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def data_dir() -> Path:
+    """Where macros.json / settings.json live. From source: the project root. Installed or
+    portable exe: %LOCALAPPDATA%\GenshinMacro (Program Files is not a place for user data)."""
+    if not getattr(sys, "frozen", False):
+        return app_dir()
+    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    d = Path(base) / "GenshinMacro"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def migrate_legacy(exe_dir: Path, data: Path) -> None:
+    """Older builds kept macros.json/settings.json next to the exe; copy them over once."""
+    try:
+        if Path(exe_dir).resolve() == Path(data).resolve():
+            return
+    except OSError:
+        return
+    for name in ("macros.json", "settings.json"):
+        src, dst = Path(exe_dir) / name, Path(data) / name
+        if src.is_file() and not dst.exists():
+            try:
+                shutil.copy2(src, dst)
+            except OSError:
+                pass
+
+
 def _settings_file() -> Path:
-    return app_dir() / "settings.json"
+    return data_dir() / "settings.json"
 
 
 def load_settings() -> dict:
@@ -43,8 +72,8 @@ def save_settings(**changes) -> None:
 
 
 def config_path() -> Path:
-    """Default macros.json next to the exe, unless settings.json remembers another path."""
-    default = app_dir() / "macros.json"
+    """Default macros.json in the data dir, unless settings.json remembers another path."""
+    default = data_dir() / "macros.json"
     try:
         p = Path(load_settings()["config_path"])
         return p if p.is_file() else default
@@ -66,6 +95,7 @@ def main() -> int:
         messagebox.showwarning("Genshin Macro", "Ứng dụng đã đang chạy.")
         return 0
 
+    migrate_legacy(app_dir(), data_dir())
     path = config_path()
     config = Config.load(path)
     events: queue.Queue = queue.Queue()

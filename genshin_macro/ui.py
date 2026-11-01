@@ -19,6 +19,13 @@ ACTION_DOWN, ACTION_UP = "Nhấn", "Nhả"
 FILETYPES = [("Macro JSON", "*.json"), ("Tất cả", "*.*")]
 
 
+def _download_name(url: str) -> str:
+    """Local file name for a downloaded update: keep 'Setup' in the name so the
+    installer path is chosen, otherwise a plain exe name."""
+    base = url.rsplit("/", 1)[-1].split("?")[0]
+    return base if base.lower().endswith(".exe") else "GenshinMacro_new.exe"
+
+
 class Overlay(tk.Toplevel):
     """Small always-on-top, borderless status window shown over the game. Draggable."""
 
@@ -550,7 +557,7 @@ class App(tk.Tk):
         self._set_status_text(f"Đang tải bản v{version}…")
         import tempfile
 
-        dest = Path(tempfile.gettempdir()) / "GenshinMacro_new.exe"
+        dest = Path(tempfile.gettempdir()) / _download_name(dl)
         try:
             updater.download(dl, dest)
         except Exception as ex:
@@ -602,7 +609,7 @@ class App(tk.Tk):
             self._install_from_url(dl, status)
 
         def pick_file() -> None:
-            p = filedialog.askopenfilename(title="Chọn file GenshinMacro.exe mới", filetypes=[("Exe", "*.exe")], parent=dlg)
+            p = filedialog.askopenfilename(title="Chọn file GenshinMacroSetup.exe hoặc GenshinMacro.exe mới", filetypes=[("Exe", "*.exe")], parent=dlg)
             if p:
                 self._install_exe(Path(p))
 
@@ -614,7 +621,7 @@ class App(tk.Tk):
 
         status.config(text="Đang tải…")
         status.update_idletasks()
-        dest = Path(tempfile.gettempdir()) / "GenshinMacro_new.exe"
+        dest = Path(tempfile.gettempdir()) / _download_name(url)
         try:
             updater.download(url, dest)
         except Exception as ex:
@@ -626,10 +633,10 @@ class App(tk.Tk):
         if updater.current_exe() is None:
             messagebox.showinfo("Cập nhật", "Đang chạy từ mã nguồn, không tự thay được. Hãy chạy từ file .exe.")
             return
-        if confirm and not messagebox.askyesno("Cập nhật", "App sẽ tắt, thay file exe và mở lại. Tiếp tục?"):
+        if confirm and not messagebox.askyesno("Cập nhật", "App sẽ tắt, cài bản mới và mở lại. Tiếp tục?"):
             return
         self.ctl.stop_all()
-        updater.apply_update(new_exe)
+        updater.install_downloaded(new_exe)
 
     # ---- overlay -------------------------------------------------------------------
     def _overlay_changed(self) -> None:

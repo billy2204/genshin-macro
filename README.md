@@ -43,9 +43,16 @@ Một khung nhỏ luôn nổi trên cùng, góc trên trái màn hình, hiện *
 
 Ô **Random ms** áp dụng cho mọi macro. Mỗi khoảng chờ trước khi nhấn phím được cộng thêm một số ngẫu nhiên từ 0 đến giá trị này; thời gian giữ phím được cộng thêm từ 0 đến một phần ba giá trị này. Mặc định 100. Đặt 0 để tắt random (không khuyến khích).
 
+## Cài đặt
+
+Hai cách, tải ở trang Releases:
+
+- **GenshinMacroSetup.exe** (khuyên dùng): bộ cài wizard, chọn thư mục (mặc định Program Files\Genshin Macro), tạo shortcut Start Menu và Desktop. Gỡ bằng Settings, Apps, Genshin Macro, Uninstall. Dữ liệu macro và cài đặt nằm ở `%LOCALAPPDATA%\GenshinMacro`, gỡ app không mất.
+- **GenshinMacro.exe** (portable): một file duy nhất, copy đâu chạy đó. Dữ liệu cũng nằm ở `%LOCALAPPDATA%\GenshinMacro`; nếu cạnh exe có `macros.json` cũ thì lần đầu chạy app tự chuyển vào đó.
+
 ## Cách dùng
 
-1. Chạy `dist\GenshinMacro.exe` (hoặc `python main.py`). App **tự xin quyền Administrator** vì Genshin chạy ở quyền đó, nếu không game sẽ bỏ qua phím giả lập.
+1. Mở Genshin Macro. App **tự xin quyền Administrator** vì Genshin chạy ở quyền đó, nếu không game sẽ bỏ qua phím giả lập.
 2. **Thêm Spam** hoặc **Thêm Ghi**, đặt tên, bấm ô **Phím tắt** rồi nhấn phím muốn gán (chuột phải vào ô để xóa).
 3. Vào game, bấm phím tắt để chạy, bấm lại để dừng.
 
@@ -56,9 +63,9 @@ Lưu ý:
 
 ## Cập nhật app
 
-Nút **Cập nhật** trên thanh công cụ: một bấm là tự kiểm tra GitHub Releases của repo này (file `manifest.json`), có bản mới thì tải về, app tự tắt, thay file exe và mở lại, không hỏi gì thêm. Chuột phải vào nút để đổi nguồn cập nhật hoặc **Chọn file .exe…** đã tải sẵn. Nguồn cập nhật lưu trong `settings.json`. Repo phải ở chế độ public thì link tải mới hoạt động không cần đăng nhập.
+Nút **Cập nhật** trên thanh công cụ: một bấm là tự kiểm tra GitHub Releases của repo này (file `manifest.json`), có bản mới thì tải về và cài, không hỏi gì thêm. Bản cài đặt tải `GenshinMacroSetup.exe` và chạy bộ cài im lặng (tự đóng app, thay file, mở lại). Bản portable tải `GenshinMacro.exe` và thay file tại chỗ. Chuột phải vào nút để đổi nguồn cập nhật hoặc **Chọn file .exe…** đã tải sẵn. Nguồn cập nhật lưu trong `settings.json`. Repo phải ở chế độ public thì link tải mới hoạt động không cần đăng nhập.
 
-Phát hành bản mới: tăng `APP_VERSION` trong `genshin_macro/updater.py`, build, rồi tạo release có hai file `GenshinMacro.exe` và `manifest.json` (`{"version": "x.y.z", "url": "<link tải GenshinMacro.exe>"}`).
+Phát hành bản mới: tăng `APP_VERSION` trong `genshin_macro/updater.py`, chạy `build.bat` (cần Inno Setup 6), rồi tạo release với ba file trong `dist\`: `GenshinMacroSetup.exe`, `GenshinMacro.exe`, `manifest.json`.
 
 ## Build
 
@@ -66,7 +73,7 @@ Phát hành bản mới: tăng `APP_VERSION` trong `genshin_macro/updater.py`, b
 build.bat
 ```
 
-Cần Python 3.10+. Kết quả: `dist\GenshinMacro.exe`.
+Cần Python 3.10+ và Inno Setup 6 (`winget install JRSoftware.InnoSetup`). Kết quả trong `dist\`: `GenshinMacroSetup.exe` (bộ cài), `GenshinMacro.exe` (portable), `manifest.json`. Script bộ cài ở `installer\GenshinMacro.iss`.
 
 ## Test
 
