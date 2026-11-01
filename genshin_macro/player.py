@@ -123,7 +123,7 @@ class Player:
         self._rng = rng or random.Random()
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
-        self._last_thread: Optional[threading.Thread] = None
+        self._threads: list[threading.Thread] = []  # every macro thread not yet joined
         self._stop = threading.Event()
         self._running_id: Optional[str] = None
 
@@ -155,6 +155,7 @@ class Player:
                     self._on_state(None)
 
             self._thread = threading.Thread(target=target, name=f"macro-{macro.id}", daemon=True)
+            self._threads = [t for t in self._threads if t.is_alive()] + [self._thread]
             self._thread.start()
 
     def stop(self) -> None:
@@ -163,19 +164,26 @@ class Player:
         The macro thread releases its keys in its own `finally`."""
         with self._lock:
             self._stop.set()
-            if self._thread is not None:
-                self._last_thread = self._thread
             self._thread = None
             self._running_id = None
 
     def join(self, timeout: float = 2.0) -> bool:
-        """Wait for the most recent macro thread to finish (use on app close so
-        release_all runs before the process exits). Returns True if it finished."""
-        t = self._thread or self._last_thread
-        if t is None or t is threading.current_thread():
-            return True
-        t.join(timeout)
-        return not t.is_alive()
+        """Wait for every macro thread to finish (use on app close so each one's
+        release_all runs before the process exits). Returns True if all finished."""
+        import time
+
+        deadline = time.monotonic() + timeout
+        with self._lock:
+            threads = list(self._threads)
+        me = threading.current_thread()
+        for t in threads:
+            if t is me:
+                continue
+            t.join(max(0.0, deadline - time.monotonic()))
+        alive = [t for t in threads if t.is_alive() and t is not me]
+        with self._lock:
+            self._threads = alive
+        return not alive
 
     def toggle(self, macro: Macro) -> None:
         if self._running_id == macro.id:

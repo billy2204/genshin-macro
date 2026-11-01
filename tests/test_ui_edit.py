@@ -130,3 +130,49 @@ def test_apply_delay_edit_shifts_following(app):
     rows = [a.event_tree.item(i, "values") for i in a.event_tree.get_children()]
     assert [row[0] for row in rows] == ["0", "400", "200"]
     assert a.event_tree.selection() == ("1",)
+
+
+def test_update_now_runs_full_flow_without_prompts(app, monkeypatch):
+    from pathlib import Path as _P
+
+    a, ctl, _, _ = app
+    calls = []
+    monkeypatch.setattr("genshin_macro.ui.updater.check_for_update", lambda url: ("9.9.9", "https://x/new.exe"))
+    monkeypatch.setattr("genshin_macro.ui.updater.download", lambda url, dest: calls.append(("download", url)) or dest)
+    monkeypatch.setattr("genshin_macro.ui.updater.current_exe", lambda: _P("C:/fake/GenshinMacro.exe"))
+    monkeypatch.setattr("genshin_macro.ui.updater.apply_update", lambda p: calls.append(("apply", p)))
+
+    def no_prompt(*a_, **k):
+        raise AssertionError("update must not ask questions")
+
+    monkeypatch.setattr("genshin_macro.ui.messagebox.askyesno", no_prompt)
+    a.update_url = "https://x/manifest.json"
+    a._update_now()
+    assert calls[0] == ("download", "https://x/new.exe")
+    assert calls[1][0] == "apply"
+
+
+def test_update_now_reports_up_to_date(app, monkeypatch):
+    a, ctl, _, _ = app
+    shown = []
+    monkeypatch.setattr("genshin_macro.ui.updater.check_for_update", lambda url: None)
+    monkeypatch.setattr("genshin_macro.ui.messagebox.showinfo", lambda *x, **k: shown.append(x))
+    a.update_url = "https://x/manifest.json"
+    a._update_now()
+    assert shown and "mới nhất" in shown[0][1]
+
+
+def test_update_now_error_opens_dialog(app, monkeypatch):
+    a, ctl, _, _ = app
+    opened, errors = [], []
+
+    def boom(url):
+        raise OSError("HTTP Error 404: Not Found")
+
+    monkeypatch.setattr("genshin_macro.ui.updater.check_for_update", boom)
+    monkeypatch.setattr("genshin_macro.ui.messagebox.showerror", lambda *x, **k: errors.append(x))
+    monkeypatch.setattr(a, "_update_dialog", lambda: opened.append(1))
+    a.update_url = "https://x/manifest.json"
+    a._update_now()
+    assert errors and "404" in errors[0][1]
+    assert opened == [1]

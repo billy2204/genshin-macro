@@ -100,7 +100,9 @@ class App(tk.Tk):
         self.path_lbl = ttk.Label(bar, text="", foreground="#666")
         self.path_lbl.pack(side="left", padx=(10, 0))
         self._refresh_path_label()
-        ttk.Button(bar, text="Cập nhật…", command=self._update_dialog).pack(side="right")
+        upd = ttk.Button(bar, text="Cập nhật", command=self._update_now)
+        upd.pack(side="right")
+        upd.bind("<Button-3>", lambda ev: self._update_dialog())  # right-click: advanced (URL / local exe)
 
         left = ttk.Frame(self, padding=8)
         left.grid(row=1, column=0, sticky="nsw")
@@ -511,6 +513,41 @@ class App(tk.Tk):
         self._update_status()
 
     # ---- update ---------------------------------------------------------------------
+    def _update_now(self) -> None:
+        """One click: check manifest, download, swap exe, relaunch. No questions asked."""
+        if not self.update_url:
+            self._update_dialog()
+            return
+        self._set_status_text("Đang kiểm tra cập nhật…")
+        try:
+            found = updater.check_for_update(self.update_url)
+        except Exception as ex:
+            self._update_status()
+            messagebox.showerror("Cập nhật", f"Không kiểm tra được bản mới: {ex}")
+            self._update_dialog()
+            return
+        if found is None:
+            self._update_status()
+            messagebox.showinfo("Cập nhật", f"Bạn đang dùng bản mới nhất (v{updater.APP_VERSION}).")
+            return
+        version, dl = found
+        self._set_status_text(f"Đang tải bản v{version}…")
+        import tempfile
+
+        dest = Path(tempfile.gettempdir()) / "GenshinMacro_new.exe"
+        try:
+            updater.download(dl, dest)
+        except Exception as ex:
+            self._update_status()
+            messagebox.showerror("Cập nhật", f"Tải thất bại: {ex}")
+            return
+        self._set_status_text("Đang cài bản mới, app sẽ tự mở lại…")
+        self._install_exe(dest, confirm=False)
+
+    def _set_status_text(self, text: str) -> None:
+        self.status.config(text=text, foreground=COLOR_RUN)
+        self.status.update_idletasks()
+
     def _update_dialog(self) -> None:
         dlg = tk.Toplevel(self)
         dlg.title("Cập nhật app")
@@ -544,8 +581,8 @@ class App(tk.Tk):
                 status.config(text="Bạn đang dùng bản mới nhất.")
                 return
             version, dl = found
-            if not messagebox.askyesno("Có bản mới", f"Có bản v{version}. Tải về và cập nhật ngay?", parent=dlg):
-                return
+            status.config(text=f"Có bản v{version}, đang tải…")
+            dlg.update_idletasks()
             self._install_from_url(dl, status)
 
         def pick_file() -> None:
@@ -567,13 +604,13 @@ class App(tk.Tk):
         except Exception as ex:
             status.config(text=f"Tải thất bại: {ex}")
             return
-        self._install_exe(dest)
+        self._install_exe(dest, confirm=False)
 
-    def _install_exe(self, new_exe: Path) -> None:
+    def _install_exe(self, new_exe: Path, confirm: bool = True) -> None:
         if updater.current_exe() is None:
             messagebox.showinfo("Cập nhật", "Đang chạy từ mã nguồn, không tự thay được. Hãy chạy từ file .exe.")
             return
-        if not messagebox.askyesno("Cập nhật", "App sẽ tắt, thay file exe và mở lại. Tiếp tục?"):
+        if confirm and not messagebox.askyesno("Cập nhật", "App sẽ tắt, thay file exe và mở lại. Tiếp tục?"):
             return
         self.ctl.stop_all()
         updater.apply_update(new_exe)

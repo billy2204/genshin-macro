@@ -52,7 +52,7 @@ Lưu ý:
 
 ## Cập nhật app
 
-Nút **Cập nhật…** trên thanh công cụ. Mặc định kiểm tra bản mới ở GitHub Releases của repo này (file `manifest.json`). Có bản mới thì tải về, app tự tắt, thay file exe và mở lại. Cũng có thể **Chọn file .exe…** đã tải sẵn để thay. Nguồn cập nhật lưu trong `settings.json`.
+Nút **Cập nhật** trên thanh công cụ: một bấm là tự kiểm tra GitHub Releases của repo này (file `manifest.json`), có bản mới thì tải về, app tự tắt, thay file exe và mở lại, không hỏi gì thêm. Chuột phải vào nút để đổi nguồn cập nhật hoặc **Chọn file .exe…** đã tải sẵn. Nguồn cập nhật lưu trong `settings.json`. Repo phải ở chế độ public thì link tải mới hoạt động không cần đăng nhập.
 
 Phát hành bản mới: tăng `APP_VERSION` trong `genshin_macro/updater.py`, build, rồi tạo release có hai file `GenshinMacro.exe` và `manifest.json` (`{"version": "x.y.z", "url": "<link tải GenshinMacro.exe>"}`).
 

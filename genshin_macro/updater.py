@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 DEFAULT_UPDATE_URL = "https://github.com/billy2204/genshin-macro/releases/latest/download/manifest.json"
 
 
