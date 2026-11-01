@@ -41,6 +41,11 @@ class Controller:
         self._recording_id: Optional[str] = None
         self._capture_cb: Optional[Callable[[KeyRef], None]] = None
         self.selected_id: Optional[str] = None  # set by the UI; target of the record hotkey
+        # Optional fallback mouse source while recording: factory(on_change) -> object with start()/stop()
+        self.poller_factory: Optional[Callable[[Callable[[str, bool], None]], object]] = None
+        self._poller = None
+        # Optional live monitor (UI window): receives one text line per raw input event
+        self.debug_sink: Optional[Callable[[str], None]] = None
         self.rebind_all()
 
     # ---- queries -----------------------------------------------------------
@@ -303,6 +308,12 @@ class Controller:
                 self.stop_recording()
             self._recording_id = macro_id
             self._recorder.start()
+            if self.poller_factory is not None:
+                try:
+                    self._poller = self.poller_factory(lambda b, d: self.on_mouse(b, d, source="poll"))
+                    self._poller.start()
+                except Exception:
+                    self._poller = None
             self._events.put(("recording", macro_id))
 
     def toggle_recording(self) -> None:
@@ -325,6 +336,11 @@ class Controller:
         with self._lock:
             if self._recording_id is None:
                 return
+            if self._poller is not None:
+                try:
+                    self._poller.stop()
+                finally:
+                    self._poller = None
             events = self._recorder.stop()
             macro_id, self._recording_id = self._recording_id, None
             try:
@@ -345,6 +361,8 @@ class Controller:
 
     # ---- raw input from listener thread ------------------------------------
     def on_key(self, scan: int, ext: bool, down: bool) -> None:
+        if self.debug_sink is not None:
+            self._debug(f"key  {self._label_for(scan, bool(ext))} (sc {scan}{' ext' if ext else ''}) {'down' if down else 'up'}  [hook]")
         cb = self._capture_cb
         if cb is not None:
             if down:
@@ -362,11 +380,19 @@ class Controller:
             return False
         return isinstance(m, RecordedMacro) and any(k.key() == (scan, bool(ext)) for k in m.ignore_keys)
 
-    def on_mouse(self, button: str, down: bool) -> None:
+    def on_mouse(self, button: str, down: bool, source: str = "hook") -> None:
+        if self.debug_sink is not None:
+            self._debug(f"mouse {button} {'down' if down else 'up'}  [{source}]")
         if self._capture_cb is not None:
             return
         if self._recording_id is not None:
             self._recorder.feed("mouse_down" if down else "mouse_up", button, False)
+
+    def _debug(self, line: str) -> None:
+        try:
+            self.debug_sink(line)
+        except Exception:
+            pass
 
     def stop_all(self) -> None:
         self._player.stop()

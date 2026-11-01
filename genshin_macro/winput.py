@@ -119,6 +119,11 @@ def foreground_hwnd() -> int:
     return int(user32.GetForegroundWindow() or 0)
 
 
+def async_key_down(vk: int) -> bool:
+    """Physical key/button state right now (works for raw-input games where hooks stay silent)."""
+    return bool(user32.GetAsyncKeyState(vk) & 0x8000)
+
+
 def foreground_pid() -> int:
     pid = wintypes.DWORD(0)
     user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), ctypes.byref(pid))

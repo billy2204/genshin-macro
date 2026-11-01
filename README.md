@@ -7,7 +7,9 @@ App Windows nhỏ chạy cạnh Genshin Impact để lưu và chạy macro bằn
 - **Spam phím**: bấm một phím liên tục (ví dụ F để skip cốt truyện). Chọn phím và khoảng cách giữa các lần bấm (ms). Chạy đến khi bạn bấm phím tắt lần nữa.
 - **Ghi thao tác**: ghi lại combo thật (phím + chuột trái/phải) kèm nhịp thời gian, rồi phát lại. Có thể tích **Lặp lại** để chạy vòng đến khi dừng. Danh sách **Thao tác đã ghi** hiển thị từng bước: thời gian, nhấn/nhả, phím nào.
 
-Không ghi di chuyển chuột, chỉ ghi click trái/phải.
+Không ghi di chuyển chuột, chỉ ghi click trái/phải. Nút chuột được đọc bằng hai đường song song: hook hệ thống và đọc trạng thái nút khi đang ghi, để game dùng raw input vẫn ghi được.
+
+Nếu nghi ngờ một phím hay nút không được nhận, mở **Kiểm tra đầu vào** trên thanh công cụ: cửa sổ này liệt kê trực tiếp từng sự kiện app nhận được, kể cả khi bạn bấm trong game.
 
 ## Ghi một combo
 

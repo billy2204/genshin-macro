@@ -19,6 +19,6 @@ def test_resource_path_frozen_uses_meipass(monkeypatch, tmp_path):
 def test_icon_file_is_multi_size_ico():
     from PIL import Image
 
-    im = Image.open(resources.resource_path("assets/icon.ico"))
-    assert im.format == "ICO"
-    assert (256, 256) in im.info.get("sizes", set()) and (16, 16) in im.info.get("sizes", set())
+    with Image.open(resources.resource_path("assets/icon.ico")) as im:
+        assert im.format == "ICO"
+        assert (256, 256) in im.info.get("sizes", set()) and (16, 16) in im.info.get("sizes", set())

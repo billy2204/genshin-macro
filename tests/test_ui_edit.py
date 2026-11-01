@@ -193,3 +193,14 @@ def test_import_razer_button_adds_and_selects_macro(app, tmp_path):
     assert a.listbox.size() == 1 and "Skirk" in a.listbox.get(0)
     assert a.kind_lbl.cget("text") == "Ghi thao tác"
     assert len(a.event_tree.get_children()) == 2
+
+
+def test_input_monitor_shows_raw_events(app):
+    a, ctl, _, _ = app
+    a._open_monitor()
+    ctl.on_key(18, False, True)
+    ctl.on_mouse("right", True, source="poll")
+    a._poll()
+    lines = list(a.monitor_list.get(0, "end"))
+    assert any("SC18" in ln for ln in lines)
+    assert any("right" in ln and "[poll]" in ln for ln in lines)

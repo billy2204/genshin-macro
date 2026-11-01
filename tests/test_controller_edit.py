@@ -217,3 +217,54 @@ def test_import_razer_bad_file_raises(tmp_path):
     f.write_text("<Other/>", encoding="utf-8")
     with pytest.raises(ValueError):
         ctl.import_razer(f)
+
+
+class FakePoller:
+    instances = []
+
+    def __init__(self, *a, **k):
+        self.running = False
+        FakePoller.instances.append(self)
+
+    def start(self):
+        self.running = True
+
+    def stop(self):
+        self.running = False
+
+
+def test_recording_starts_and_stops_mouse_poller(monkeypatch):
+    FakePoller.instances.clear()
+    ctl, *_ = _make()
+    ctl.poller_factory = lambda on_change: FakePoller()
+    r = ctl.add_recorded()
+    ctl.start_recording(r.id)
+    assert FakePoller.instances and FakePoller.instances[-1].running
+    ctl.stop_recording()
+    assert not FakePoller.instances[-1].running
+
+
+def test_polled_mouse_events_feed_recorder_and_dedupe_with_hook():
+    ctl, saved, clock, _ = _make()
+    r = ctl.add_recorded()
+    ctl.start_recording(r.id)
+    clock.t = 1.0
+    ctl.on_mouse("right", True, source="poll")
+    clock.t = 1.001
+    ctl.on_mouse("right", True, source="hook")  # same press seen by the hook: ignored
+    clock.t = 1.2
+    ctl.on_mouse("right", False, source="hook")
+    clock.t = 1.201
+    ctl.on_mouse("right", False, source="poll")
+    ctl.stop_recording()
+    assert [(e.t, e.type, e.code) for e in ctl.get(r.id).events] == [(0, "mouse_down", "right"), (200, "mouse_up", "right")]
+
+
+def test_debug_sink_receives_raw_events():
+    ctl, *_ = _make()
+    lines = []
+    ctl.debug_sink = lines.append
+    ctl.on_key(18, False, True)
+    ctl.on_mouse("right", True, source="poll")
+    assert any("K18" in ln and "down" in ln for ln in lines)
+    assert any("right" in ln and "poll" in ln for ln in lines)

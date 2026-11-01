@@ -13,6 +13,7 @@ from tkinter import messagebox
 from .controller import Controller
 from .hotkeys import HotkeyManager
 from .model import Config
+from .mousepoll import MouseButtonPoller
 from .player import Player
 from .recorder import Recorder
 
@@ -124,6 +125,8 @@ def main() -> int:
         path=path,
         on_path_change=remember_config_path,
     )
+
+    controller.poller_factory = lambda on_change: MouseButtonPoller(winput.async_key_down, on_change)
 
     from .listeners import start_listeners
     from .ui import App

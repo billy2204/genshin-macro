@@ -113,6 +113,7 @@ class App(tk.Tk):
         self.path_lbl = ttk.Label(bar, text="", foreground="#666")
         self.path_lbl.pack(side="left", padx=(10, 0))
         self._refresh_path_label()
+        ttk.Button(bar, text="Kiểm tra đầu vào", command=self._open_monitor).pack(side="right", padx=(0, 6))
         upd = ttk.Button(bar, text="Cập nhật", command=self._update_now)
         upd.pack(side="right")
         upd.bind("<Button-3>", lambda ev: self._update_dialog())  # right-click: advanced (URL / local exe)
@@ -540,6 +541,48 @@ class App(tk.Tk):
         self._refresh_list()
         self._update_status()
 
+    # ---- input monitor ------------------------------------------------------------------
+    def _open_monitor(self) -> None:
+        """Live list of raw key/mouse events the app receives: shows whether a button
+        reaches us at all (hook) or only via polling while recording."""
+        if getattr(self, "monitor", None) is not None and self.monitor.winfo_exists():
+            self.monitor.lift()
+            return
+        win = tk.Toplevel(self)
+        win.title("Kiểm tra đầu vào")
+        win.geometry("520x320")
+        ttk.Label(
+            win,
+            text="Bấm phím / chuột (trong game cũng được). Mỗi dòng là một sự kiện app nhận được.\n"
+            "[hook] = qua hook hệ thống, [poll] = qua đọc trạng thái nút chuột khi đang ghi.",
+            justify="left",
+            padding=6,
+        ).pack(anchor="w")
+        lb = tk.Listbox(win, font=("Consolas", 10))
+        lb.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        self.monitor, self.monitor_list = win, lb
+
+        def sink(line: str) -> None:
+            self.events.put(("debug", line))
+
+        self.ctl.debug_sink = sink
+
+        def on_close() -> None:
+            self.ctl.debug_sink = None
+            win.destroy()
+            self.monitor = None
+
+        win.protocol("WM_DELETE_WINDOW", on_close)
+
+    def _monitor_line(self, line: str) -> None:
+        lb = getattr(self, "monitor_list", None)
+        if lb is None or not lb.winfo_exists():
+            return
+        lb.insert("end", line)
+        if lb.size() > 200:
+            lb.delete(0)
+        lb.see("end")
+
     # ---- update ---------------------------------------------------------------------
     def _update_now(self) -> None:
         """One click: check manifest, download, swap exe, relaunch. No questions asked."""
@@ -733,6 +776,8 @@ class App(tk.Tk):
                 self._set_field(field, ref)
         elif kind == "reload":
             self._reload_all()
+        elif kind == "debug":
+            self._monitor_line(item[1])
         elif kind in ("state", "recording"):
             self._update_status()
             self._load_editor()

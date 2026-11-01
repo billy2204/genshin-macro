@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.3.3"
 DEFAULT_UPDATE_URL = "https://github.com/billy2204/genshin-macro/releases/latest/download/manifest.json"
 INSTALLER_FLAGS = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"]
 
