@@ -176,3 +176,20 @@ def test_update_now_error_opens_dialog(app, monkeypatch):
     a._update_now()
     assert errors and "404" in errors[0][1]
     assert opened == [1]
+
+
+def test_import_razer_button_adds_and_selects_macro(app, tmp_path):
+    a, ctl, _, _ = app
+    f = tmp_path / "Skirk.xml"
+    f.write_text(
+        "<Macro><Name>Skirk</Name><MacroEvents>"
+        "<MacroEvent><Type>1</Type><KeyEvent><Makecode>18</Makecode><State>0</State></KeyEvent></MacroEvent>"
+        "<MacroEvent><Type>0</Type><Number>0.1</Number></MacroEvent>"
+        "<MacroEvent><Type>1</Type><KeyEvent><Makecode>18</Makecode><State>1</State></KeyEvent></MacroEvent>"
+        "</MacroEvents></Macro>",
+        encoding="utf-8",
+    )
+    a._import_razer_path(f)
+    assert a.listbox.size() == 1 and "Skirk" in a.listbox.get(0)
+    assert a.kind_lbl.cget("text") == "Ghi thao tác"
+    assert len(a.event_tree.get_children()) == 2

@@ -191,3 +191,29 @@ def test_event_delays_helper():
     ctl, *_ = _make()
     r = _with_events(ctl)
     assert ctl.event_delays(r.id) == [0, 100, 200, 50]
+
+
+RAZER_XML = """<Macro><Name>Skirk</Name><MacroEvents>
+<MacroEvent><Type>1</Type><KeyEvent><Makecode>18</Makecode><State>0</State></KeyEvent></MacroEvent>
+<MacroEvent><Type>0</Type><Number>0.1</Number></MacroEvent>
+<MacroEvent><Type>1</Type><KeyEvent><Makecode>18</Makecode><State>1</State></KeyEvent></MacroEvent>
+</MacroEvents></Macro>"""
+
+
+def test_import_razer_creates_recorded_macro(tmp_path):
+    ctl, saved, *_ = _make(tmp_path)
+    f = tmp_path / "Skirk.xml"
+    f.write_text(RAZER_XML, encoding="utf-8")
+    m = ctl.import_razer(f)
+    assert m.name == "Skirk" and m.kind == "recorded"
+    assert [(e.t, e.type, e.code) for e in m.events] == [(0, "key_down", 18), (100, "key_up", 18)]
+    assert [k.scan for k in m.ignore_keys] == [W, A, S, D]
+    assert ctl.get(m.id) is m and saved
+
+
+def test_import_razer_bad_file_raises(tmp_path):
+    ctl, *_ = _make(tmp_path)
+    f = tmp_path / "bad.xml"
+    f.write_text("<Other/>", encoding="utf-8")
+    with pytest.raises(ValueError):
+        ctl.import_razer(f)

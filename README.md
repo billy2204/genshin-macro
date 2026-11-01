@@ -27,6 +27,10 @@ Mỗi macro Ghi có danh sách **Phím bỏ qua**: những phím này không bao
 
 Bảng **Thao tác đã ghi** hiện cột **Chờ (ms)**: thời gian chờ kể từ thao tác trước. Dòng **Tổng** là tổng thời gian cả macro. Chọn một dòng, sửa **Chờ**, **Nhấn/Nhả**, loại (Phím / Chuột trái / Chuột phải, với Phím thì bấm nút phím rồi nhấn phím mới) và bấm **Áp dụng**. Đổi thời gian chờ của một dòng thì các dòng sau dịch theo. **Xóa event** bỏ dòng đang chọn, các dòng sau giữ nguyên mốc thời gian. Lưu ý nếu xóa một lần Nhấn mà giữ lại Nhả thì phím đó coi như không được bấm; macro vẫn nhả mọi phím đang giữ khi dừng.
 
+## Nhập macro từ Razer Synapse
+
+Nút **Nhập Razer…** chọn file .xml xuất từ Razer Synapse (Macro, Export). App đọc phím, chuột trái/phải, thời gian chờ và khối lặp, tạo thành một macro Ghi mới có thể sửa như bình thường. Di chuyển chuột và nút chuột giữa bị bỏ qua.
+
 ## File macro
 
 Thanh trên cùng có **Mở file…** và **Lưu thành…** để chọn đường dẫn file macro (.json). App nhớ file đang dùng trong `settings.json` cạnh exe, lần sau mở lại đúng file đó. Muốn chia sẻ macro sang máy khác chỉ cần copy file .json rồi Mở file… trên máy kia.

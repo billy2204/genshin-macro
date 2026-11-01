@@ -11,6 +11,7 @@ from .model import EVENT_TYPES, Config, InputEvent, KeyRef, Macro, RecordedMacro
 
 MOUSE_LABELS = {"left": "Chuột trái", "right": "Chuột phải"}
 DEFAULT_IGNORE_SCANS = (17, 30, 31, 32)  # W A S D
+from .razer_import import parse_razer_xml
 from .recorder import Recorder
 
 
@@ -89,6 +90,21 @@ class Controller:
             m = RecordedMacro(
                 id=new_id(),
                 name=self._next_name(),
+                ignore_keys=[KeyRef(s, False, self._label_for(s, False)) for s in DEFAULT_IGNORE_SCANS],
+            )
+            self._config.macros.append(m)
+            self._changed()
+            return m
+
+    def import_razer(self, path: Path) -> RecordedMacro:
+        """Create a Recorded macro from a Razer Synapse XML export."""
+        text = Path(path).read_text(encoding="utf-8-sig")
+        name, events = parse_razer_xml(text)
+        with self._lock:
+            m = RecordedMacro(
+                id=new_id(),
+                name=name or self._next_name(),
+                events=events,
                 ignore_keys=[KeyRef(s, False, self._label_for(s, False)) for s in DEFAULT_IGNORE_SCANS],
             )
             self._config.macros.append(m)

@@ -94,6 +94,7 @@ class App(tk.Tk):
         ttk.Button(bar, text="Thêm Spam", command=self._add_spam).pack(side="left")
         ttk.Button(bar, text="Thêm Ghi", command=self._add_recorded).pack(side="left", padx=(6, 0))
         ttk.Button(bar, text="Xóa", command=self._delete).pack(side="left", padx=(6, 0))
+        ttk.Button(bar, text="Nhập Razer…", command=self._import_razer_dialog).pack(side="left", padx=(6, 0))
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=10)
         ttk.Button(bar, text="Mở file…", command=self._open_dialog).pack(side="left")
         ttk.Button(bar, text="Lưu thành…", command=self._save_as_dialog).pack(side="left", padx=(6, 0))
@@ -460,6 +461,21 @@ class App(tk.Tk):
             return
         self.ctl.delete_event(m.id, i)
         self._fill_events(self.ctl.get(m.id), keep_index=min(i, len(self.ctl.get(m.id).events) - 1))
+
+    # ---- razer import ----------------------------------------------------------------
+    def _import_razer_dialog(self) -> None:
+        p = filedialog.askopenfilename(title="Chọn file macro Razer (.xml)", filetypes=[("Razer macro XML", "*.xml"), ("Tất cả", "*.*")])
+        if p:
+            self._import_razer_path(Path(p))
+
+    def _import_razer_path(self, path: Path) -> None:
+        try:
+            m = self.ctl.import_razer(path)
+        except (OSError, ValueError) as ex:
+            messagebox.showerror("Nhập Razer", f"Không nhập được: {ex}")
+            return
+        self._selected = m.id
+        self._refresh_list()
 
     # ---- file path ---------------------------------------------------------------
     def _refresh_path_label(self) -> None:
