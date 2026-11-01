@@ -34,10 +34,12 @@ def main() -> int:
     config = Config.load(path)
     events: queue.Queue = queue.Queue()
 
-    app_hwnd = {"value": 0}
+    my_pid = winput.current_pid()
 
     def is_app_foreground() -> bool:
-        return app_hwnd["value"] != 0 and winput.root_hwnd(winput.foreground_hwnd()) == app_hwnd["value"]
+        # Any window of this process (main window, its dialogs) counts as "the app".
+        # The overlay is WS_EX_NOACTIVATE so it never becomes foreground.
+        return winput.foreground_pid() == my_pid
 
     player = Player(
         winput.Win32Output(),
@@ -48,7 +50,7 @@ def main() -> int:
     controller = Controller(
         config,
         save=lambda cfg: cfg.save(path),
-        recorder=Recorder(time.monotonic, is_app_foreground),
+        recorder=Recorder(time.monotonic, is_app_foreground, foreground_hwnd=winput.foreground_hwnd),
         hotkeys=HotkeyManager(is_app_foreground),
         player=player,
         events=events,
@@ -59,12 +61,11 @@ def main() -> int:
     from .ui import App
 
     app = App(controller, events, on_overlay_created=winput.make_noactivate)
-    app.update_idletasks()
-    app_hwnd["value"] = winput.root_hwnd(app.winfo_id())
     kb, ms = start_listeners(controller)
 
     def on_close() -> None:
         controller.stop_all()
+        player.join(2.0)  # let the macro thread release its keys before we exit
         kb.stop()
         ms.stop()
         app.destroy()

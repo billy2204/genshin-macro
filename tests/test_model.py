@@ -93,3 +93,27 @@ def test_defaults_for_record_hotkey_and_overlay():
     cfg = Config.from_dict({"random_ms": 100, "macros": []})
     assert cfg.record_hotkey is None
     assert cfg.overlay is True
+
+
+def test_load_skips_bad_macro_entries_and_keeps_good_ones(tmp_path):
+    path = tmp_path / "macros.json"
+    good = SpamMacro(id="a", name="ok", key=KeyRef(33, False, "F")).to_dict()
+    path.write_text(json.dumps({"random_ms": 50, "macros": [good, {"kind": "zzz"}, "x", {"kind": "spam", "id": "b", "name": "n", "interval_ms": "abc"}]}), encoding="utf-8")
+    cfg = Config.load(path)
+    assert cfg.random_ms == 50
+    assert [m.id for m in cfg.macros] == ["a"]
+
+
+def test_load_non_dict_macros_does_not_crash(tmp_path):
+    path = tmp_path / "macros.json"
+    path.write_text(json.dumps({"macros": {"a": 1}}), encoding="utf-8")
+    cfg = Config.load(path)
+    assert cfg.macros == []
+
+
+def test_corrupt_file_is_backed_up_before_defaults(tmp_path):
+    path = tmp_path / "macros.json"
+    path.write_text("{not json", encoding="utf-8")
+    Config.load(path)
+    bak = tmp_path / "macros.json.bak"
+    assert bak.exists() and bak.read_text(encoding="utf-8") == "{not json"

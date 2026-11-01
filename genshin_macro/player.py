@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import random
 import threading
-import time
 from typing import Callable, Optional, Protocol
 
 from .model import Macro, RecordedMacro, SpamMacro
@@ -17,9 +16,14 @@ class Output(Protocol):
     def mouse_up(self, button: str) -> None: ...
 
 
-def _real_sleep_ms(ms: float) -> None:
-    if ms > 0:
-        time.sleep(ms / 1000.0)
+def _interruptible_sleep(stop: threading.Event) -> Callable[[float], None]:
+    """Sleep that wakes immediately when `stop` is set."""
+
+    def sleep(ms: float) -> None:
+        if ms > 0:
+            stop.wait(ms / 1000.0)
+
+    return sleep
 
 
 class _Pressed:
@@ -90,8 +94,8 @@ def run_macro(
                     if should_stop():
                         return
                     sleep(delay)
-                    if stop.is_set():
-                        return
+                    if should_stop():
+                        return  # focus may have been lost during the sleep
                     pressed.emit(ev.type, ev.code, ev.ext)
                 if not macro.loop or should_stop():
                     return
@@ -107,9 +111,10 @@ class Player:
         get_random_ms: Callable[[], int],
         foreground_hwnd: Callable[[], int],
         on_state: Callable[[Optional[str]], None],
-        sleep: Callable[[float], None] = _real_sleep_ms,
+        sleep: Optional[Callable[[float], None]] = None,
         rng=None,
     ):
+        """`sleep=None` (production) uses a sleep that is interrupted by stop()."""
         self._output = output
         self._get_random_ms = get_random_ms
         self._foreground_hwnd = foreground_hwnd
@@ -118,6 +123,7 @@ class Player:
         self._rng = rng or random.Random()
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
+        self._last_thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._running_id: Optional[str] = None
 
@@ -137,9 +143,11 @@ class Player:
             def still_fg() -> bool:
                 return self._foreground_hwnd() == hwnd0
 
+            sleep = self._sleep if self._sleep is not None else _interruptible_sleep(stop)
+
             def target() -> None:
                 try:
-                    run_macro(macro, self._output, stop, self._get_random_ms(), self._rng, self._sleep, still_fg)
+                    run_macro(macro, self._output, stop, self._get_random_ms(), self._rng, sleep, still_fg)
                 finally:
                     with self._lock:
                         if self._running_id == macro.id and self._stop is stop:
@@ -150,14 +158,24 @@ class Player:
             self._thread.start()
 
     def stop(self) -> None:
+        """Signal the running macro to stop. Never blocks: this is called from the
+        low-level keyboard hook thread, where blocking stalls all input system-wide.
+        The macro thread releases its keys in its own `finally`."""
         with self._lock:
-            thread = self._thread
             self._stop.set()
+            if self._thread is not None:
+                self._last_thread = self._thread
             self._thread = None
-        if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=1.0)
-        with self._lock:
             self._running_id = None
+
+    def join(self, timeout: float = 2.0) -> bool:
+        """Wait for the most recent macro thread to finish (use on app close so
+        release_all runs before the process exits). Returns True if it finished."""
+        t = self._thread or self._last_thread
+        if t is None or t is threading.current_thread():
+            return True
+        t.join(timeout)
+        return not t.is_alive()
 
     def toggle(self, macro: Macro) -> None:
         if self._running_id == macro.id:

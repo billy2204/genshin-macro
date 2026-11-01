@@ -117,3 +117,29 @@ def test_extended_flag_distinguishes_keys():
     events = rec.stop()
     assert len(events) == 4
     assert events[1].ext is True
+
+
+def test_ignores_events_once_foreground_window_changes():
+    """Alt+Tab out of the game: hook sees Tab-up / Alt-up while the task switcher is
+    foreground. Those must be ignored so Alt/Tab become trailing downs and get dropped."""
+    clock, fg = FakeClock(), Foreground()
+    hwnd = {"v": 100}  # 100 = game
+    rec = Recorder(clock, fg, foreground_hwnd=lambda: hwnd["v"])
+    rec.start()
+    clock.t = 1.0
+    rec.feed("key_down", 30, False)
+    clock.t = 1.1
+    rec.feed("key_up", 30, False)
+    clock.t = 2.0
+    rec.feed("key_down", 56, False)  # Alt
+    clock.t = 2.05
+    rec.feed("key_down", 15, False)  # Tab
+    hwnd["v"] = 200  # task switcher now foreground
+    clock.t = 2.2
+    rec.feed("key_up", 15, False)
+    clock.t = 2.3
+    rec.feed("key_up", 56, False)
+    clock.t = 3.0
+    rec.feed("key_down", 31, False)  # typing in another window
+    events = rec.stop()
+    assert [(e.type, e.code) for e in events] == [("key_down", 30), ("key_up", 30)]

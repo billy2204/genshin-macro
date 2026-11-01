@@ -147,8 +147,17 @@ class Config:
     def from_dict(cls, d: Any) -> "Config":
         if not isinstance(d, dict):
             return cls()
-        random_ms = max(0, int(d.get("random_ms", DEFAULT_RANDOM_MS)))
-        macros = [macro_from_dict(m) for m in d.get("macros", [])]
+        try:
+            random_ms = max(0, int(d.get("random_ms", DEFAULT_RANDOM_MS)))
+        except (TypeError, ValueError):
+            random_ms = DEFAULT_RANDOM_MS
+        raw = d.get("macros", [])
+        macros: list[Macro] = []
+        for m in raw if isinstance(raw, list) else []:
+            try:
+                macros.append(macro_from_dict(m))
+            except Exception:
+                continue  # skip one bad entry, keep the rest
         return cls(
             random_ms=random_ms,
             macros=macros,
@@ -158,10 +167,20 @@ class Config:
 
     @classmethod
     def load(cls, path: Path) -> "Config":
+        """Never raises. A file that exists but cannot be parsed is copied to
+        `<name>.bak` so the next save does not destroy the user's data."""
+        path = Path(path)
         try:
-            text = Path(path).read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return cls()
+        try:
             return cls.from_dict(json.loads(text))
-        except (OSError, ValueError, KeyError, TypeError):
+        except Exception:
+            try:
+                path.with_suffix(path.suffix + ".bak").write_text(text, encoding="utf-8")
+            except OSError:
+                pass
             return cls()
 
     def save(self, path: Path) -> None:

@@ -9,9 +9,16 @@ Code = Union[int, str]
 
 
 class Recorder:
-    def __init__(self, clock: Callable[[], float], is_app_foreground: Callable[[], bool]):
+    def __init__(
+        self,
+        clock: Callable[[], float],
+        is_app_foreground: Callable[[], bool],
+        foreground_hwnd: Callable[[], int] = lambda: 0,
+    ):
         self._clock = clock
         self._is_app_foreground = is_app_foreground
+        self._foreground_hwnd = foreground_hwnd
+        self._target_hwnd: int | None = None  # window the recording is locked to
         self._recording = False
         self._events: list[InputEvent] = []
         self._held: dict[Hashable, int] = {}  # (code, ext) -> index of its key_down in _events
@@ -30,10 +37,16 @@ class Recorder:
         self._events = []
         self._held = {}
         self._t0 = None
+        self._target_hwnd = None
 
     def feed(self, type: str, code: Code, ext: bool) -> None:
         if not self._recording or self._is_app_foreground():
             return
+        fg = self._foreground_hwnd()
+        if self._target_hwnd is None:
+            self._target_hwnd = fg  # lock onto the window the first event went to
+        elif fg != self._target_hwnd:
+            return  # user switched windows (Alt+Tab etc.): ignore everything after
         key = (code, bool(ext))
         is_down = type.endswith("_down")
         if is_down and key in self._held:

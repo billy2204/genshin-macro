@@ -66,6 +66,8 @@ user32.SendInput.restype = wintypes.UINT
 user32.GetForegroundWindow.restype = wintypes.HWND
 user32.GetKeyNameTextW.argtypes = (wintypes.LONG, wintypes.LPWSTR, ctypes.c_int)
 user32.GetKeyNameTextW.restype = ctypes.c_int
+user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+user32.GetWindowThreadProcessId.restype = wintypes.DWORD
 user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
 user32.GetAncestor.restype = wintypes.HWND
 
@@ -115,6 +117,16 @@ class Win32Output:
 
 def foreground_hwnd() -> int:
     return int(user32.GetForegroundWindow() or 0)
+
+
+def foreground_pid() -> int:
+    pid = wintypes.DWORD(0)
+    user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), ctypes.byref(pid))
+    return int(pid.value)
+
+
+def current_pid() -> int:
+    return int(kernel32.GetCurrentProcessId())
 
 
 def root_hwnd(hwnd: int) -> int:

@@ -80,7 +80,7 @@ def test_foreground_change_stops_and_releases():
 
     def still_fg():
         calls["n"] += 1
-        return calls["n"] <= 1  # foreground lost right after the first event
+        return calls["n"] <= 2  # checked before+after each sleep: lost before the 2nd event
 
     out, sleep = _run(_recorded(), still_fg=still_fg)
     assert out.calls == [("key_down", 18, False), ("key_up", 18, False)]
@@ -135,7 +135,43 @@ def test_player_toggle_same_id_stops_and_other_id_replaces():
     p.toggle(other)
     p.stop()
     assert p.running_id is None
+    assert p.join(1.0)  # stop() no longer blocks; wait for the thread's finally
     assert states[0] == "s1" and states[-1] is None
     downs = [c for c in out.calls if c[0].endswith("_down")]
     ups = [c for c in out.calls if c[0].endswith("_up")]
     assert len(downs) == len(ups)
+
+
+def test_foreground_lost_during_sleep_emits_nothing_more():
+    # still_fg flips to False while sleeping before the 3rd event (mouse_down)
+    state = {"n": 0}
+
+    def still_fg():
+        return state["n"] < 3
+
+    stop = threading.Event()
+    out = FakeOutput()
+
+    def sleep(ms):
+        state["n"] += 1  # 1st sleep -> n=1, 2nd -> 2, 3rd (before mouse_down) -> 3 => focus lost
+
+    run_macro(_recorded(), out, stop, 0, random.Random(0), sleep, still_fg)
+    assert out.calls == [("key_down", 18, False), ("key_up", 18, False)]
+
+
+def test_stop_interrupts_long_sleep_and_releases_before_exit():
+    import time
+
+    out = FakeOutput()
+    p = Player(out, lambda: 0, lambda: 1, lambda s: None)  # real (interruptible) sleep
+    spam = SpamMacro(id="s1", name="spam", key=KeyRef(33, False, "F"), interval_ms=5000)
+    p.start(spam)
+    deadline = time.monotonic() + 1.0
+    while not out.calls and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert out.calls[0] == ("key_down", 33, False)
+    t0 = time.monotonic()
+    p.stop()  # must return immediately, not block for the 40 ms hold / 5 s gap
+    assert time.monotonic() - t0 < 0.2
+    assert p.join(1.0) is True  # thread finished (sleep was interrupted)
+    assert out.calls[-1] == ("key_up", 33, False)
