@@ -5,13 +5,27 @@ App Windows nhỏ chạy cạnh Genshin Impact để lưu và chạy macro bằn
 ## Hai kiểu macro
 
 - **Spam phím**: bấm một phím liên tục (ví dụ F để skip cốt truyện). Chọn phím và khoảng cách giữa các lần bấm (ms). Chạy đến khi bạn bấm phím tắt lần nữa.
-- **Ghi thao tác**: bấm **Ghi**, chuyển sang game, đánh combo thật (phím + chuột trái/phải), rồi bấm phím tắt của macro đó để dừng ghi. App lưu lại đúng nhịp để phát lại. Có thể tích **Lặp lại** để chạy vòng đến khi dừng.
+- **Ghi thao tác**: ghi lại combo thật (phím + chuột trái/phải) kèm nhịp thời gian, rồi phát lại. Có thể tích **Lặp lại** để chạy vòng đến khi dừng. Danh sách **Thao tác đã ghi** hiển thị từng bước: thời gian, nhấn/nhả, phím nào.
 
 Không ghi di chuyển chuột, chỉ ghi click trái/phải.
 
+## Ghi một combo
+
+1. Chọn (hoặc thêm) một macro kiểu Ghi trong danh sách bên trái.
+2. Đặt **Phím Ghi** ở thanh dưới cùng (ví dụ F10). Đây là phím ghi chung cho toàn app.
+3. Vào game, bấm Phím Ghi. Overlay hiện **● GHI: tên macro**.
+4. Đánh combo. Bấm Phím Ghi lần nữa (hoặc phím tắt của chính macro đó) để dừng. Phím dừng không bị lưu vào combo.
+5. Quay lại app xem danh sách thao tác, tích Lặp lại nếu cần.
+
+Nếu bạn Alt+Tab ra khỏi game trong lúc ghi, mọi thao tác từ lúc đó bị bỏ qua (Alt+Tab không bị ghi).
+
+## Overlay
+
+Một khung nhỏ luôn nổi trên cùng, góc trên trái màn hình, hiện **Sẵn sàng** / **● GHI: tên** / **▶ tên**. Kéo thả để di chuyển. Click vào overlay không làm game mất focus. Bật tắt bằng ô **Overlay** ở thanh dưới. Lưu ý: nếu game chạy chế độ Fullscreen độc quyền thì overlay có thể bị che, hãy dùng Borderless/Windowed.
+
 ## Random ms
 
-Ô **Random ms** ở dưới cùng áp dụng cho mọi macro. Mỗi khoảng chờ trước khi nhấn phím được cộng thêm một số ngẫu nhiên từ 0 đến giá trị này; thời gian giữ phím được cộng thêm từ 0 đến một phần ba giá trị này. Mặc định 100. Đặt 0 để tắt random (không khuyến khích).
+Ô **Random ms** áp dụng cho mọi macro. Mỗi khoảng chờ trước khi nhấn phím được cộng thêm một số ngẫu nhiên từ 0 đến giá trị này; thời gian giữ phím được cộng thêm từ 0 đến một phần ba giá trị này. Mặc định 100. Đặt 0 để tắt random (không khuyến khích).
 
 ## Cách dùng
 
@@ -20,10 +34,9 @@ Không ghi di chuyển chuột, chỉ ghi click trái/phải.
 3. Vào game, bấm phím tắt để chạy, bấm lại để dừng.
 
 Lưu ý:
-- Phím tắt không hoạt động khi cửa sổ app đang được focus.
-- Macro tự dừng nếu bạn chuyển sang cửa sổ khác (Alt+Tab).
-- Khi dừng, mọi phím đang giữ đều được nhả ra.
-- Macro được lưu trong `macros.json` cạnh file exe.
+- Phím tắt không hoạt động khi cửa sổ app (hoặc hộp thoại của app) đang được focus.
+- Macro tự dừng ngay nếu bạn chuyển sang cửa sổ khác (Alt+Tab), và nhả hết phím đang giữ.
+- Macro được lưu trong `macros.json` cạnh file exe. Nếu file hỏng, app đổi tên nó thành `macros.json.bak` và bắt đầu lại từ trống.
 
 ## Build
 
