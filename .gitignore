@@ -1,0 +1,7 @@
+__pycache__/
+build/
+dist/
+*.spec
+macros.json
+.pytest_cache/
+.superpowers/
