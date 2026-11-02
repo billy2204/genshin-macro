@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -132,8 +133,9 @@ class Controller:
                 self._check_hotkey_free(fields["hotkey"], exclude_id=macro_id)
             if "interval_ms" in fields:
                 fields["interval_ms"] = max(1, int(fields["interval_ms"]))
+            allowed = {f.name for f in dataclass_fields(m)}
             for k, v in fields.items():
-                if not hasattr(m, k):
+                if k not in allowed:
                     raise AttributeError(k)
                 setattr(m, k, v)
             self._changed()

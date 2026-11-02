@@ -35,7 +35,7 @@ Nút **Nhập Razer…** chọn file .xml xuất từ Razer Synapse (Macro, Expo
 
 ## File macro
 
-Thanh trên cùng có **Mở file…** và **Lưu thành…** để chọn đường dẫn file macro (.json). App nhớ file đang dùng trong `settings.json` cạnh exe, lần sau mở lại đúng file đó. Muốn chia sẻ macro sang máy khác chỉ cần copy file .json rồi Mở file… trên máy kia.
+Thanh trên cùng có **Mở file…** và **Lưu thành…** để chọn đường dẫn file macro (.json). App nhớ file đang dùng trong `settings.json` ở thư mục dữ liệu (xem mục Cài đặt), lần sau mở lại đúng file đó. Muốn chia sẻ macro sang máy khác chỉ cần copy file .json rồi Mở file… trên máy kia.
 
 ## Overlay
 
@@ -61,7 +61,7 @@ Hai cách, tải ở trang Releases:
 Lưu ý:
 - Phím tắt không hoạt động khi cửa sổ app (hoặc hộp thoại của app) đang được focus.
 - Macro tự dừng ngay nếu bạn chuyển sang cửa sổ khác (Alt+Tab), và nhả hết phím đang giữ.
-- Mặc định macro lưu trong `macros.json` cạnh file exe (đổi được bằng Lưu thành…). Nếu file hỏng, app sao nó thành `.bak` và bắt đầu lại từ trống.
+- Mặc định macro lưu trong `macros.json` ở thư mục dữ liệu: project root khi chạy từ mã nguồn, `%LOCALAPPDATA%\GenshinMacro` với bản cài/portable (đổi được bằng Lưu thành…). Nếu file hỏng, app sao nó thành `.bak` và bắt đầu lại từ trống.
 
 ## Cập nhật app
 

@@ -63,7 +63,7 @@ def test_invalid_xml_raises():
         parse_razer_xml("<Other/>")
 
 
-REAL = Path(r"C:\Users\Billy\Downloads\Skirk.xml")
+REAL = Path(__file__).resolve().parent / "fixtures" / "skirk.xml"
 
 
 @pytest.mark.skipif(not REAL.exists(), reason="sample file not present")

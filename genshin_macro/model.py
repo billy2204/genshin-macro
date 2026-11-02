@@ -151,6 +151,13 @@ class Config:
         if not isinstance(d, dict):
             return cls()
         try:
+            version = int(d.get("version", CONFIG_VERSION))
+        except (TypeError, ValueError):
+            version = CONFIG_VERSION
+        if version > CONFIG_VERSION:
+            # Never load (and later overwrite) a file written by a newer app.
+            raise ValueError(f"Config version {version} mới hơn bản app hỗ trợ ({CONFIG_VERSION})")
+        try:
             random_ms = max(0, int(d.get("random_ms", DEFAULT_RANDOM_MS)))
         except (TypeError, ValueError):
             random_ms = DEFAULT_RANDOM_MS

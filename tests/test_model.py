@@ -119,6 +119,18 @@ def test_corrupt_file_is_backed_up_before_defaults(tmp_path):
     assert bak.exists() and bak.read_text(encoding="utf-8") == "{not json"
 
 
+def test_newer_config_version_is_backed_up_and_not_loaded(tmp_path):
+    path = tmp_path / "macros.json"
+    data = {"version": 999, "macros": [SpamMacro(id="a", name="new", key=KeyRef(33, False, "F")).to_dict()]}
+    path.write_text(json.dumps(data), encoding="utf-8")
+    cfg = Config.load(path)
+    assert cfg.macros == []
+    bak = tmp_path / "macros.json.bak"
+    assert bak.exists() and json.loads(bak.read_text(encoding="utf-8"))["version"] == 999
+    with pytest.raises(ValueError):
+        Config.from_dict(data)
+
+
 def test_ignore_keys_roundtrip_and_default():
     m = RecordedMacro(id="r", name="n", ignore_keys=[KeyRef(17, False, "W")])
     back = macro_from_dict(m.to_dict())

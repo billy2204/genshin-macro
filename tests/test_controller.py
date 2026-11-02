@@ -159,6 +159,14 @@ def test_save_called_on_update_and_random_ms():
     assert len(saved) == n + 2
 
 
+def test_update_rejects_non_field_attributes():
+    ctl, *_ = _make()
+    a = ctl.add_spam()
+    with pytest.raises(AttributeError):
+        ctl.update(a.id, kind="recorded")
+    assert a.kind == "spam"
+
+
 def test_events_queue_receives_recording_state():
     ctl, _, _, _, _, events = _make()
     r = ctl.add_recorded()
