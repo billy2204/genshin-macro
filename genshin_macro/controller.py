@@ -388,7 +388,22 @@ class Controller:
         if self._capture_cb is not None:
             return
         if self._recording_id is not None:
+            if self._is_mouse_ignored(button):
+                return
             self._recorder.feed("mouse_down" if down else "mouse_up", button, False)
+
+    def _is_mouse_ignored(self, button: str) -> bool:
+        try:
+            m = self.get(self._recording_id)
+        except KeyError:
+            return False
+        if not isinstance(m, RecordedMacro):
+            return False
+        if button == "left":
+            return not m.record_mouse_left
+        if button == "right":
+            return not m.record_mouse_right
+        return False
 
     def _debug(self, line: str) -> None:
         try:

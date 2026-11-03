@@ -136,3 +136,13 @@ def test_ignore_keys_roundtrip_and_default():
     back = macro_from_dict(m.to_dict())
     assert back.ignore_keys == [KeyRef(17, False, "W")]
     assert RecordedMacro.from_dict({"kind": "recorded", "id": "x", "name": "y"}).ignore_keys == []
+
+
+def test_mouse_record_flags_roundtrip_and_default():
+    m = RecordedMacro(id="r", name="n", record_mouse_right=False)
+    back = macro_from_dict(m.to_dict())
+    assert back.record_mouse_left is True
+    assert back.record_mouse_right is False
+    default = RecordedMacro.from_dict({"kind": "recorded", "id": "x", "name": "y"})
+    assert default.record_mouse_left is True
+    assert default.record_mouse_right is True

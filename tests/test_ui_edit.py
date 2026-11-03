@@ -1,6 +1,8 @@
 """UI: ignore-key list, event editing controls, file path controls."""
 import queue
 import sys
+import threading
+import time
 import tkinter as tk
 
 import pytest
@@ -61,6 +63,25 @@ def test_ignore_list_shows_defaults_and_add_remove(app):
     a.ignore_list.selection_set(0)
     a._remove_ignore()
     assert list(a.ignore_list.get(0, "end")) == ["SC30", "SC31", "SC32", "SC42"]
+
+
+def test_mouse_record_checkboxes_toggle_and_follow_selection(app):
+    a, ctl, _, _ = app
+    a._add_recorded()
+    r = ctl.macros[0]
+    assert a.rec_left_var.get() is True and a.rec_right_var.get() is True
+
+    a.rec_right_var.set(False)
+    a._commit_mouse()
+    assert ctl.get(r.id).record_mouse_right is False
+    assert a.rec_right_var.get() is False
+
+    a._add_recorded()  # new macro has its own defaults
+    assert a.rec_right_var.get() is True
+    a.listbox.selection_clear(0, "end")
+    a.listbox.selection_set(0)
+    a._on_select()
+    assert a.rec_right_var.get() is False
 
 
 def test_selecting_event_fills_edit_fields(app):
@@ -130,6 +151,62 @@ def test_apply_delay_edit_shifts_following(app):
     rows = [a.event_tree.item(i, "values") for i in a.event_tree.get_children()]
     assert [row[0] for row in rows] == ["0", "400", "200"]
     assert a.event_tree.selection() == ("1",)
+
+
+def test_auto_check_queues_update_found(app, monkeypatch):
+    a, ctl, events, _ = app
+    a.update_url = "https://x/manifest.json"
+    ran = threading.Event()
+
+    def fake(url):
+        ran.set()
+        return ("9.9.9", "https://x/new.exe")
+
+    monkeypatch.setattr("genshin_macro.ui.updater.check_for_update", fake)
+    a._auto_check_update()
+    assert ran.wait(1.0)
+
+    deadline = time.monotonic() + 1.0
+    item = None
+    while time.monotonic() < deadline:
+        try:
+            item = events.get_nowait()
+            break
+        except queue.Empty:
+            time.sleep(0.005)
+    assert item == ("update_found", "9.9.9", "https://x/new.exe")
+
+    a._auto_check_update()  # once per launch
+    assert events.empty()
+
+
+def test_auto_check_stays_silent_when_offline(app, monkeypatch):
+    a, ctl, events, _ = app
+    a.update_url = "https://x/manifest.json"
+    ran = threading.Event()
+
+    def boom(url):
+        ran.set()
+        raise OSError("offline")
+
+    monkeypatch.setattr("genshin_macro.ui.updater.check_for_update", boom)
+    a._auto_check_update()
+    assert ran.wait(1.0)
+    assert events.empty()
+
+
+def test_update_found_prompts_before_installing(app, monkeypatch):
+    a, ctl, _, _ = app
+    asked, installed = [], []
+    monkeypatch.setattr("genshin_macro.ui.messagebox.askyesno", lambda *x, **k: asked.append(x) or False)
+    monkeypatch.setattr(a, "_download_and_install", lambda v, u: installed.append((v, u)))
+
+    a._handle(("update_found", "9.9.9", "https://x/new.exe"))
+    assert asked and installed == []
+
+    monkeypatch.setattr("genshin_macro.ui.messagebox.askyesno", lambda *x, **k: True)
+    a._handle(("update_found", "9.9.9", "https://x/new.exe"))
+    assert installed == [("9.9.9", "https://x/new.exe")]
 
 
 def test_update_now_runs_full_flow_without_prompts(app, monkeypatch):

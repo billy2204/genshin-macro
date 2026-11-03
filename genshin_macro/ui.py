@@ -3,6 +3,7 @@ events reach the UI through the queue drained in `_poll`."""
 from __future__ import annotations
 
 import queue
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -94,6 +95,9 @@ class App(tk.Tk):
         if self.ctl.overlay:
             self._show_overlay()
         self._update_status()
+        self._update_check_started = False
+        if updater.current_exe() is not None and self.update_url:
+            self.after(1500, self._auto_check_update)
         self.after(POLL_MS, self._poll)
 
     # ---- layout ------------------------------------------------------------
@@ -192,7 +196,7 @@ class App(tk.Tk):
         e.rowconfigure(r, weight=1)
         rf = self.rec_frame
         rf.columnconfigure(0, weight=1)
-        rf.rowconfigure(3, weight=1)
+        rf.rowconfigure(4, weight=1)
 
         top = ttk.Frame(rf)
         top.grid(row=0, column=0, sticky="ew")
@@ -203,8 +207,17 @@ class App(tk.Tk):
         self.loop_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text="Lặp lại đến khi dừng", variable=self.loop_var, command=self._commit_loop).pack(side="left", padx=8)
 
+        mouse_bar = ttk.Frame(rf)
+        mouse_bar.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        ttk.Label(mouse_bar, text="Ghi chuột:").pack(side="left")
+        self.rec_left_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(mouse_bar, text="Trái", variable=self.rec_left_var, command=self._commit_mouse).pack(side="left", padx=(4, 8))
+        self.rec_right_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(mouse_bar, text="Phải", variable=self.rec_right_var, command=self._commit_mouse).pack(side="left")
+        ttk.Label(mouse_bar, text="(tắt nút không muốn ghi)", foreground="#666").pack(side="left", padx=(8, 0))
+
         ign = ttk.LabelFrame(rf, text="Phím bỏ qua (không ghi)", padding=4)
-        ign.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        ign.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         self.ignore_list = tk.Listbox(ign, height=3, width=22, exportselection=False, activestyle="none")
         self.ignore_list.pack(side="left")
         ign_btns = ttk.Frame(ign)
@@ -215,12 +228,12 @@ class App(tk.Tk):
         ttk.Label(ign, text="Mặc định W A S D.\nPhím trong danh sách này\nkhông bao giờ bị ghi.", foreground="#666", justify="left").pack(side="left", padx=8)
 
         hdr = ttk.Frame(rf)
-        hdr.grid(row=2, column=0, sticky="ew", pady=(8, 2))
+        hdr.grid(row=3, column=0, sticky="ew", pady=(8, 2))
         ttk.Label(hdr, text="Thao tác đã ghi (chọn một dòng để sửa). Chờ = thời gian từ thao tác trước.").pack(side="left")
         self.total_lbl = ttk.Label(hdr, text="Tổng: 0 ms", font=("Segoe UI", 9, "bold"))
         self.total_lbl.pack(side="right")
         tree_box = ttk.Frame(rf)
-        tree_box.grid(row=3, column=0, sticky="nsew")
+        tree_box.grid(row=4, column=0, sticky="nsew")
         tree_box.columnconfigure(0, weight=1)
         tree_box.rowconfigure(0, weight=1)
         self.event_tree = ttk.Treeview(tree_box, columns=("t", "action", "key"), show="headings", height=8, selectmode="browse")
@@ -237,7 +250,7 @@ class App(tk.Tk):
         self.event_tree.bind("<<TreeviewSelect>>", self._on_event_select)
 
         edit = ttk.Frame(rf)
-        edit.grid(row=4, column=0, sticky="ew", pady=(6, 0))
+        edit.grid(row=5, column=0, sticky="ew", pady=(6, 0))
         ttk.Label(edit, text="Chờ (ms):").pack(side="left")
         self.ev_t_var = tk.IntVar(value=0)
         ttk.Spinbox(edit, from_=0, to=3_600_000, width=8, textvariable=self.ev_t_var).pack(side="left", padx=(2, 8))
@@ -312,6 +325,8 @@ class App(tk.Tk):
         else:
             self.kind_lbl.config(text="Ghi thao tác")
             self.loop_var.set(m.loop)
+            self.rec_left_var.set(m.record_mouse_left)
+            self.rec_right_var.set(m.record_mouse_right)
             self.rec_info.config(text=f"{len(m.events)} sự kiện, {m.duration_ms} ms")
             self.rec_btn.config(text="■ Dừng ghi" if self.ctl.recording_id == m.id else "● Ghi")
             self._fill_ignore(m)
@@ -396,6 +411,16 @@ class App(tk.Tk):
         m = self._current()
         if isinstance(m, RecordedMacro):
             self._set_field("loop", bool(self.loop_var.get()))
+
+    def _commit_mouse(self) -> None:
+        m = self._current()
+        if isinstance(m, RecordedMacro):
+            self.ctl.update(
+                m.id,
+                record_mouse_left=bool(self.rec_left_var.get()),
+                record_mouse_right=bool(self.rec_right_var.get()),
+            )
+            self._refresh_list()
 
     def _random_changed(self) -> None:
         try:
@@ -584,6 +609,41 @@ class App(tk.Tk):
         lb.see("end")
 
     # ---- update ---------------------------------------------------------------------
+    def _auto_check_update(self) -> None:
+        """One background check at startup; failures stay silent because the manual
+        Update button still reports them. Runs only for a packaged exe."""
+        if self._update_check_started or not self.update_url:
+            return
+        self._update_check_started = True
+
+        def work() -> None:
+            try:
+                found = updater.check_for_update(self.update_url)
+            except Exception:
+                return
+            if found is not None:
+                self.events.put(("update_found", found[0], found[1]))
+
+        threading.Thread(target=work, name="update-check", daemon=True).start()
+
+    def _offer_update(self, version: str, url: str) -> None:
+        if messagebox.askyesno("Cập nhật", f"Có bản v{version}. Cập nhật ngay bây giờ?"):
+            self._download_and_install(version, url)
+
+    def _download_and_install(self, version: str, url: str) -> None:
+        self._set_status_text(f"Đang tải bản v{version}…")
+        import tempfile
+
+        dest = Path(tempfile.gettempdir()) / _download_name(url)
+        try:
+            updater.download(url, dest)
+        except Exception as ex:
+            self._update_status()
+            messagebox.showerror("Cập nhật", f"Tải thất bại: {ex}")
+            return
+        self._set_status_text("Đang cài bản mới, app sẽ tự mở lại…")
+        self._install_exe(dest, confirm=False)
+
     def _update_now(self) -> None:
         """One click: check manifest, download, swap exe, relaunch. No questions asked."""
         if not self.update_url:
@@ -602,18 +662,7 @@ class App(tk.Tk):
             messagebox.showinfo("Cập nhật", f"Bạn đang dùng bản mới nhất (v{updater.APP_VERSION}).")
             return
         version, dl = found
-        self._set_status_text(f"Đang tải bản v{version}…")
-        import tempfile
-
-        dest = Path(tempfile.gettempdir()) / _download_name(dl)
-        try:
-            updater.download(dl, dest)
-        except Exception as ex:
-            self._update_status()
-            messagebox.showerror("Cập nhật", f"Tải thất bại: {ex}")
-            return
-        self._set_status_text("Đang cài bản mới, app sẽ tự mở lại…")
-        self._install_exe(dest, confirm=False)
+        self._download_and_install(version, dl)
 
     def _set_status_text(self, text: str) -> None:
         self.status.config(text=text, foreground=COLOR_RUN)
@@ -778,6 +827,8 @@ class App(tk.Tk):
             self._reload_all()
         elif kind == "debug":
             self._monitor_line(item[1])
+        elif kind == "update_found":
+            self._offer_update(item[1], item[2])
         elif kind in ("state", "recording"):
             self._update_status()
             self._load_editor()

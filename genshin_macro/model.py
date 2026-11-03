@@ -89,6 +89,8 @@ class RecordedMacro:
     loop: bool = False
     events: list[InputEvent] = field(default_factory=list)
     ignore_keys: list[KeyRef] = field(default_factory=list)  # never recorded (e.g. WASD)
+    record_mouse_left: bool = True
+    record_mouse_right: bool = True
     kind = "recorded"
 
     def to_dict(self) -> dict:
@@ -100,6 +102,8 @@ class RecordedMacro:
             "loop": self.loop,
             "events": [e.to_dict() for e in self.events],
             "ignore_keys": [k.to_dict() for k in self.ignore_keys],
+            "record_mouse_left": self.record_mouse_left,
+            "record_mouse_right": self.record_mouse_right,
         }
 
     @classmethod
@@ -111,6 +115,8 @@ class RecordedMacro:
             loop=bool(d.get("loop", False)),
             events=[InputEvent.from_dict(e) for e in d.get("events", [])],
             ignore_keys=[k for k in (KeyRef.from_dict(x) for x in d.get("ignore_keys", [])) if k is not None],
+            record_mouse_left=bool(d.get("record_mouse_left", True)),
+            record_mouse_right=bool(d.get("record_mouse_right", True)),
         )
 
     @property

@@ -25,6 +25,10 @@ Nếu bạn Alt+Tab ra khỏi game trong lúc ghi, mọi thao tác từ lúc đ�
 
 Mỗi macro Ghi có danh sách **Phím bỏ qua**: những phím này không bao giờ bị ghi (mặc định W A S D để di chuyển không lọt vào combo). Bấm **+ Thêm phím** rồi nhấn phím muốn bỏ qua, hoặc chọn một phím trong danh sách và bấm **− Bỏ phím đã chọn**.
 
+### Nút chuột
+
+Phần Ghi có hai ô **Ghi chuột trái** và **Ghi chuột phải** (mặc định bật). Tắt ô nào thì nút đó không được ghi vào macro — hữu ích khi chuột phải dùng để xoay camera. Thay đổi chỉ áp dụng cho lần ghi tiếp theo; các event đã ghi vẫn giữ nguyên.
+
 ### Sửa từng thao tác
 
 Bảng **Thao tác đã ghi** hiện cột **Chờ (ms)**: thời gian chờ kể từ thao tác trước. Dòng **Tổng** là tổng thời gian cả macro. Chọn một dòng, sửa **Chờ**, **Nhấn/Nhả**, loại (Phím / Chuột trái / Chuột phải, với Phím thì bấm nút phím rồi nhấn phím mới) và bấm **Áp dụng**. Đổi thời gian chờ của một dòng thì các dòng sau dịch theo. **Xóa event** bỏ dòng đang chọn, các dòng sau giữ nguyên mốc thời gian. Lưu ý nếu xóa một lần Nhấn mà giữ lại Nhả thì phím đó coi như không được bấm; macro vẫn nhả mọi phím đang giữ khi dừng.
@@ -65,7 +69,7 @@ Lưu ý:
 
 ## Cập nhật app
 
-Nút **Cập nhật** trên thanh công cụ: một bấm là tự kiểm tra GitHub Releases của repo này (file `manifest.json`), có bản mới thì tải về và cài, không hỏi gì thêm. Bản cài đặt tải `GenshinMacroSetup.exe` và chạy bộ cài im lặng (tự đóng app, thay file, mở lại). Bản portable tải `GenshinMacro.exe` và thay file tại chỗ. Chuột phải vào nút để đổi nguồn cập nhật hoặc **Chọn file .exe…** đã tải sẵn. Nguồn cập nhật lưu trong `settings.json`. Repo phải ở chế độ public thì link tải mới hoạt động không cần đăng nhập.
+Nút **Cập nhật** trên thanh công cụ: một bấm là tự kiểm tra GitHub Releases của repo này (file `manifest.json`), có bản mới thì tải về và cài, không hỏi gì thêm. Bản cài đặt tải `GenshinMacroSetup.exe` và chạy bộ cài im lặng (tự đóng app, thay file, mở lại); bản portable tải `GenshinMacro.exe` và thay file tại chỗ. Mỗi lần khởi động, app cũng **tự kiểm tra bản mới ở chế độ nền**; nếu có, app hỏi bạn có cập nhật ngay không (bản chạy từ mã nguồn bỏ qua bước này). Chuột phải vào nút để đổi nguồn cập nhật hoặc **Chọn file .exe…** đã tải sẵn. Nguồn cập nhật lưu trong `settings.json`. Repo phải ở chế độ public thì link tải mới hoạt động không cần đăng nhập.
 
 Phát hành bản mới: tăng `APP_VERSION` trong `genshin_macro/updater.py`, chạy `build.bat` (cần Inno Setup 6), rồi tạo release với ba file trong `dist\`: `GenshinMacroSetup.exe`, `GenshinMacro.exe`, `manifest.json`.
 

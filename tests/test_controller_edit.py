@@ -260,6 +260,37 @@ def test_polled_mouse_events_feed_recorder_and_dedupe_with_hook():
     assert [(e.t, e.type, e.code) for e in ctl.get(r.id).events] == [(0, "mouse_down", "right"), (200, "mouse_up", "right")]
 
 
+def test_mouse_buttons_can_be_excluded_from_recording():
+    ctl, saved, clock, _ = _make()
+    r = ctl.add_recorded()
+    ctl.update(r.id, record_mouse_right=False)
+    ctl.start_recording(r.id)
+    clock.t = 1.0
+    ctl.on_mouse("right", True)
+    clock.t = 1.1
+    ctl.on_mouse("right", False)
+    clock.t = 1.2
+    ctl.on_mouse("left", True, source="poll")
+    clock.t = 1.3
+    ctl.on_mouse("left", False, source="poll")
+    ctl.stop_recording()
+    assert [(e.type, e.code) for e in ctl.get(r.id).events] == [("mouse_down", "left"), ("mouse_up", "left")]
+
+    # the other button can be excluded the same way
+    ctl.update(r.id, record_mouse_left=False, record_mouse_right=True)
+    ctl.start_recording(r.id)
+    clock.t = 2.0
+    ctl.on_mouse("left", True)
+    clock.t = 2.1
+    ctl.on_mouse("left", False)
+    clock.t = 2.2
+    ctl.on_mouse("right", True)
+    clock.t = 2.3
+    ctl.on_mouse("right", False)
+    ctl.stop_recording()
+    assert [(e.type, e.code) for e in ctl.get(r.id).events] == [("mouse_down", "right"), ("mouse_up", "right")]
+
+
 def test_debug_sink_receives_raw_events():
     ctl, *_ = _make()
     lines = []
